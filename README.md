@@ -10,6 +10,8 @@ Stop database
 `docker-compose down`
 
 ## Deploying
+`docker-compose up --build`
+
 `docker build -t scoreforst:dev .`
 
 `docker-compose up -d` Run the volume with a detached head.

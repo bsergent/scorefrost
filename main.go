@@ -13,12 +13,14 @@ import (
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		log.Println("No .env file found or error loading .env file")
+	if os.Getenv("DOCKER_ENV") != "true" {
+		err := godotenv.Load()
+		if err != nil {
+			log.Printf("Warning: Could not load .env file, relying on environment variables")
+		}
 	}
 
-	apiPort := os.Getenv("PORT")
+	apiPort := os.Getenv("API_PORT")
 	if apiPort == "" {
 		apiPort = "8080"
 	}
@@ -42,17 +44,18 @@ func main() {
 }
 
 func connectToDB() (*sql.DB, error) {
-	dbHost := os.Getenv("POSTGRES_HOST")
-	dbPort := os.Getenv("POSTGRES_PORT")
-	dbUser := os.Getenv("POSTGRES_USER")
-	dbPassword := os.Getenv("POSTGRES_PASSWORD")
-	dbName := os.Getenv("POSTGRES_DB")
+	dbHost := os.Getenv("PGHOST")
+	dbPort := os.Getenv("PGPORT")
+	dbUser := os.Getenv("PGUSER")
+	dbPassword := os.Getenv("PGPASSWORD")
+	dbName := os.Getenv("PGDB")
 
 	// PostgreSQL DSN
 	dsn := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		dbHost, dbPort, dbUser, dbPassword, dbName,
 	)
+	log.Printf("Connection String: %s", dsn)
 
 	var db *sql.DB
 	var err error
