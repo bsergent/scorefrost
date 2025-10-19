@@ -1,0 +1,17 @@
+# Local artifacts
+*.exe
+*.log
+*.tmp
+
+# VCS and editor
+**/.git
+**/.gitignore
+**/.vs
+**/.vscode
+
+# Go
+vendor
+
+# Project
+LICENSE
+README.md
