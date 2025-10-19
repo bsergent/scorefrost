@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: scorefrost-db
+    environment:
+      POSTGRES_USER: scorefrost
+      POSTGRES_PASSWORD: scorefrost
+      POSTGRES_DB: scorefrost
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scorefrost"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - scorefrost-network
+
+  api:
+    build: .
+    container_name: scorefrost-api
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: scorefrost
+      DB_PASSWORD: scorefrost
+      DB_NAME: scorefrost
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - scorefrost-network
+
+volumes:
+  postgres_data:
+
+networks:
+  scorefrost-network:
+    driver: bridge
