@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -123,8 +124,8 @@ func main() {
 
 func (s *Server) routes() {
 	s.router.HandleFunc("/health", s.handleHealth())
-	s.router.HandleFunc("/api/scores", s.handleScores())
 	s.router.HandleFunc("/api/scores/", s.handleScoreByID())
+	s.router.HandleFunc("/api/scores", s.handleScores())
 	s.router.HandleFunc("/api/leaderboard", s.handleLeaderboard())
 }
 
@@ -236,8 +237,15 @@ func (s *Server) handleScoreByID() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
-		// Extract ID from path
-		id := r.URL.Path[len("/api/scores/"):]
+		// Extract ID from path - trim prefix and check for valid ID
+		path := r.URL.Path
+		prefix := "/api/scores/"
+		if !strings.HasPrefix(path, prefix) {
+			http.Error(w, "Invalid path", http.StatusNotFound)
+			return
+		}
+
+		id := strings.TrimPrefix(path, prefix)
 		if id == "" {
 			http.Error(w, "Score ID is required", http.StatusBadRequest)
 			return
