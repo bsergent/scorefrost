@@ -8,10 +8,31 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big"
 	"net/http"
 
 	"github.com/google/uuid"
 )
+
+// Word lists for random display name generation
+var adjectives = []string{
+	"Awesome", "Blazing", "Bouncy", "Brave", "Bright", "Cheerful", "Clever", "Cool",
+	"Cosmic", "Crafty", "Daring", "Dazzling", "Epic", "Fearless", "Friendly", "Funky",
+	"Frosty", "Gentle", "Giggly", "Glowing", "Golden", "Happy", "Heroic", "Jolly",
+	"Jumpy", "Legendary", "Lightning", "Lucky", "Magical", "Majestic", "Mighty", "Mystic",
+	"Noble", "Nimble", "Peppy", "Playful", "Powerful", "Quick", "Radiant", "Royal",
+	"Shiny", "Silly", "Smooth", "Snappy", "Sparkly", "Speedy", "Stellar", "Super",
+	"Swift", "Turbo", "Ultimate", "Vibrant", "Wild", "Zippy", "Zany",
+}
+
+var nouns = []string{
+	"Archer", "Adventurer", "Bear", "Comet", "Cactus", "Dragon", "Dreamer", "Eagle",
+	"Explorer", "Falcon", "Flame", "Fox", "Gamer", "Glacier", "Hero", "Hunter",
+	"Knight", "Legend", "Lion", "Mage", "Meteor", "Ninja", "Otter", "Panda",
+	"Penguin", "Phoenix", "Pirate", "Player", "Racer", "Ranger", "Rebel", "Rocket",
+	"Samurai", "Scout", "Shadow", "Shark", "Sloth", "Spirit", "Star", "Storm",
+	"Tiger", "Titan", "Viking", "Warrior", "Wizard", "Wolf", "Wonder", "Yeti",
+}
 
 // CreateUserResponse represents the JSON response for POST /user
 type CreateUserResponse struct {
@@ -43,8 +64,13 @@ func createUserHandler(db *sql.DB) http.HandlerFunc {
 		// Hash the API key for storage
 		apiKeyHash := hashAPIKey(apiKey)
 
-		// Default display name
-		displayName := "unset"
+		// Generate random display name
+		displayName, err := generateRandomDisplayName()
+		if err != nil {
+			log.Printf("Failed to generate display name: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
 
 		// Insert user into database
 		var returnedID string
@@ -91,4 +117,21 @@ func generateAPIKey() (string, error) {
 func hashAPIKey(apiKey string) string {
 	hash := sha256.Sum256([]byte(apiKey))
 	return fmt.Sprintf("%x", hash)
+}
+
+// generateRandomDisplayName creates a random "Adjective Noun" display name
+func generateRandomDisplayName() (string, error) {
+	// Generate random index for adjective
+	adjIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(adjectives))))
+	if err != nil {
+		return "", err
+	}
+
+	// Generate random index for noun
+	nounIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(nouns))))
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%s %s", adjectives[adjIndex.Int64()], nouns[nounIndex.Int64()]), nil
 }
