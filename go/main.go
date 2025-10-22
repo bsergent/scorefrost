@@ -36,7 +36,9 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
+	// Register routes
 	http.HandleFunc("/health", health)
+	http.HandleFunc("/user", createUserHandler(db))
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

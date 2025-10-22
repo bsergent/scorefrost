@@ -87,3 +87,18 @@ VALUES
     ('00000000-0000-0000-0000-000000000000', 'Anonymous', 1, ''),
     ('00000000-0000-0000-0000-000000000001', 'Dev', 1, '')
 ON CONFLICT (id) DO NOTHING;
+
+-- Function to create a new user
+-- Returns the new user's ID
+CREATE OR REPLACE FUNCTION create_user(
+    p_id UUID,
+    p_display_name VARCHAR(64),
+    p_api_key_hash VARCHAR(64)
+) RETURNS UUID AS $$
+BEGIN
+    INSERT INTO "user" (id, display_name, display_name_status, api_key_hash)
+    VALUES (p_id, p_display_name, 1, p_api_key_hash);
+    
+    RETURN p_id;
+END;
+$$ LANGUAGE plpgsql;
