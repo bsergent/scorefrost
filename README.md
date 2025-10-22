@@ -2,9 +2,9 @@
 Lightweight leaderboard and analytics solution for game jams.
 
 ## Developing Locally
-Only start database and run API locally:
+Only start database and run API locally from the root directory:
 `docker-compose up -d db`
-`go run main.go`
+`go run ./go`
 
 Stop database
 `docker-compose down`

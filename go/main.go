@@ -29,7 +29,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect to DB: %v", err)
 	}
-	_ = db // Will be used later
+	defer db.Close()
+
+	// Initialize database schema
+	if err := initializeDatabase(db); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
 
 	http.HandleFunc("/health", health)
 
@@ -72,7 +77,6 @@ func connectToDB() (*sql.DB, error) {
 		}
 		time.Sleep(2 * time.Second)
 	}
-	defer db.Close()
 
 	// Return any connection errors
 	if err != nil {

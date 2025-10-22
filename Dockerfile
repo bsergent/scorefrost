@@ -2,11 +2,13 @@ FROM golang:1.25-alpine AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
-COPY . .
-RUN go build -o scorefrost main.go
+COPY go/ ./go/
+COPY sql/ ./sql/
+RUN cd go && go build -o ../scorefrost .
 
 FROM alpine:latest
 WORKDIR /app
 COPY --from=builder /app/scorefrost .
+COPY sql/ ./sql/
 EXPOSE 8080
 CMD ["./scorefrost"]
