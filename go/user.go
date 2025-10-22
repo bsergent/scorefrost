@@ -173,7 +173,7 @@ func generateRandomDisplayName() (string, error) {
 
 // generateFriendCode creates a random 8-character alphanumeric friend code in format XXXX-XXXX
 func generateFriendCode() (string, error) {
-	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const charset = "ABCDEFGHJKMNPQRSTUVWXYZ123456789"
 	const codeLength = 8
 
 	code := make([]byte, codeLength)
