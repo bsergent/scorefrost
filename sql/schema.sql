@@ -2,6 +2,7 @@
 -- Stores user information including display names and API key authentication
 CREATE TABLE IF NOT EXISTS "user" (
     id UUID PRIMARY KEY,
+    friend_code VARCHAR(9) UNIQUE NOT NULL, -- Format: XXXX-XXXX (8 alphanumeric chars + 1 dash)
     display_name_pending VARCHAR(64),
     display_name VARCHAR(64),
     display_name_status SMALLINT NOT NULL DEFAULT 0, -- 0=Pending, 1=Approved, 2=Rejected
@@ -12,11 +13,7 @@ CREATE TABLE IF NOT EXISTS "user" (
 
 CREATE INDEX IF NOT EXISTS idx_user_display_name ON "user"(display_name);
 CREATE INDEX IF NOT EXISTS idx_user_api_key_hash ON "user"(api_key_hash);
-
--- Ensure all display names are unique across both display_name and display_name_pending
-CREATE UNIQUE INDEX IF NOT EXISTS idx_user_all_display_names_unique 
-ON "user" (LOWER(COALESCE(display_name, display_name_pending)))
-WHERE display_name IS NOT NULL OR display_name_pending IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_friend_code ON "user"(friend_code);
 
 -- Score Type Table
 -- Defines types of scores (e.g., time, striping, fuel, stars)
@@ -82,22 +79,23 @@ CREATE INDEX IF NOT EXISTS idx_user_relation_target ON user_relation(user_id_tar
 CREATE INDEX IF NOT EXISTS idx_user_relation_status ON user_relation(status);
 
 -- Insert default users (Anonymous and Dev)
-INSERT INTO "user" (id, display_name, display_name_status, api_key_hash)
+INSERT INTO "user" (id, friend_code, display_name, display_name_status, api_key_hash)
 VALUES 
-    ('00000000-0000-0000-0000-000000000000', 'Anonymous', 1, ''),
-    ('00000000-0000-0000-0000-000000000001', 'Dev', 1, '')
+    ('00000000-0000-0000-0000-000000000000', '0000-0000', 'Anonymous', 1, ''),
+    ('00000000-0000-0000-0000-000000000001', '0000-0001', 'Dev', 1, '')
 ON CONFLICT (id) DO NOTHING;
 
 -- Function to create a new user
 -- Returns the new user's ID
 CREATE OR REPLACE FUNCTION create_user(
     p_id UUID,
+    p_friend_code VARCHAR(9),
     p_display_name VARCHAR(64),
     p_api_key_hash VARCHAR(64)
 ) RETURNS UUID AS $$
 BEGIN
-    INSERT INTO "user" (id, display_name, display_name_status, api_key_hash)
-    VALUES (p_id, p_display_name, 1, p_api_key_hash);
+    INSERT INTO "user" (id, friend_code, display_name, display_name_status, api_key_hash)
+    VALUES (p_id, p_friend_code, p_display_name, 1, p_api_key_hash);
     
     RETURN p_id;
 END;

@@ -10,6 +10,7 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -37,6 +38,7 @@ var nouns = []string{
 // CreateUserResponse represents the JSON response for POST /user
 type CreateUserResponse struct {
 	ID          string `json:"id"`
+	FriendCode  string `json:"friend_code"`
 	DisplayName string `json:"display_name"`
 	APIKey      string `json:"api_key"`
 }
@@ -72,24 +74,57 @@ func createUserHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Insert user into database
+		// Generate a unique friend code with retry logic
+		const maxRetries = 10
+		var friendCode string
 		var returnedID string
-		err = db.QueryRow(
-			"SELECT create_user($1, $2, $3)",
-			userID.String(),
-			displayName,
-			apiKeyHash,
-		).Scan(&returnedID)
 
-		if err != nil {
-			log.Printf("Failed to create user: %v", err)
-			http.Error(w, "Failed to create user", http.StatusInternalServerError)
-			return
+		for i := range maxRetries {
+			// Generate friend code
+			friendCode, err = generateFriendCode()
+			if err != nil {
+				log.Printf("Failed to generate friend code: %v", err)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				return
+			}
+
+			// Try to insert user into database
+			err = db.QueryRow(
+				"SELECT create_user($1, $2, $3, $4)",
+				userID.String(),
+				friendCode,
+				displayName,
+				apiKeyHash,
+			).Scan(&returnedID)
+
+			// If successful, break out of retry loop
+			if err == nil {
+				break
+			}
+
+			// Check if error is due to duplicate friend code
+			// If it's a different error, return immediately
+			if !isDuplicateKeyError(err) {
+				log.Printf("Failed to create user: %v", err)
+				http.Error(w, "Failed to create user", http.StatusInternalServerError)
+				return
+			}
+
+			// If last retry, return error
+			if i == maxRetries-1 {
+				log.Printf("Failed to generate unique friend code after %d attempts", maxRetries)
+				http.Error(w, "Failed to create user", http.StatusInternalServerError)
+				return
+			}
+
+			// Otherwise, retry with new friend code
+			log.Printf("Friend code collision, retrying... (attempt %d/%d)", i+1, maxRetries)
 		}
 
 		// Prepare response
 		response := CreateUserResponse{
 			ID:          userID.String(),
+			FriendCode:  friendCode,
 			DisplayName: displayName,
 			APIKey:      apiKey,
 		}
@@ -134,4 +169,34 @@ func generateRandomDisplayName() (string, error) {
 	}
 
 	return fmt.Sprintf("%s %s", adjectives[adjIndex.Int64()], nouns[nounIndex.Int64()]), nil
+}
+
+// generateFriendCode creates a random 8-character alphanumeric friend code in format XXXX-XXXX
+func generateFriendCode() (string, error) {
+	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const codeLength = 8
+
+	code := make([]byte, codeLength)
+	for i := range codeLength {
+		randomIndex, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			return "", err
+		}
+		code[i] = charset[randomIndex.Int64()]
+	}
+
+	// Insert dash in the middle: XXXX-XXXX
+	return fmt.Sprintf("%s-%s", string(code[:4]), string(code[4:])), nil
+}
+
+// isDuplicateKeyError checks if the error is a PostgreSQL unique constraint violation
+func isDuplicateKeyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// PostgreSQL duplicate key error code is 23505
+	errMsg := err.Error()
+	return strings.Contains(errMsg, "duplicate key") ||
+		strings.Contains(errMsg, "unique constraint") ||
+		strings.Contains(errMsg, "23505")
 }
