@@ -36,19 +36,29 @@ func main() {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	// Register routes
-	http.HandleFunc("/health", health)
-	http.HandleFunc("/user/", userRouter(db)) // Note the trailing slash for /user/{id}
-	http.HandleFunc("/user", createUserHandler(db))
+	// Create rate limiter: 100 requests per minute per IP
+	rateLimiter := NewRateLimiter(100, 1*time.Minute)
+	log.Println("Rate limiter initialized: 100 requests/minute per IP")
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	// Create a new ServeMux for routing
+	mux := http.NewServeMux()
+
+	// Register routes
+	mux.HandleFunc("/health", health)
+	mux.HandleFunc("/user/", userRouter(db)) // Note the trailing slash for /user/{id}
+	mux.HandleFunc("/user", createUserHandler(db))
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, `{"service":"scorefrost","env_port":"%s"}`, apiPort)
 	})
 
+	// Wrap mux with rate limiting middleware
+	handler := RateLimitMiddleware(rateLimiter, mux)
+
 	log.Printf("Starting server on :%s", apiPort)
-	log.Fatal(http.ListenAndServe(":"+apiPort, nil))
+	log.Fatal(http.ListenAndServe(":"+apiPort, handler))
 }
 
 func connectToDB() (*sql.DB, error) {
