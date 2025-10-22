@@ -1,0 +1,9 @@
+### Get user by UUID
+GET http://localhost:8080/user/00000000-0000-0000-0000-000000000001
+
+###
+
+### Get user by friend code
+GET http://localhost:8080/user/0000-0001
+
+###

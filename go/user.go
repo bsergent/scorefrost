@@ -43,6 +43,27 @@ type CreateUserResponse struct {
 	APIKey      string `json:"api_key"`
 }
 
+// GetUserResponse represents the JSON response for GET /user/{id}
+type GetUserResponse struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+	FriendCode  string `json:"friend_code"`
+}
+
+// userRouter routes requests to /user and /user/{id}
+func userRouter(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// /user/{id} pattern - delegate to getUserHandler
+		if r.URL.Path != "/user/" && len(r.URL.Path) > len("/user/") {
+			getUserHandler(db)(w, r)
+			return
+		}
+		
+		// Exact /user/ match with trailing slash - not allowed
+		http.Error(w, "Not found", http.StatusNotFound)
+	}
+}
+
 // createUserHandler handles POST /user requests
 func createUserHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -132,6 +153,74 @@ func createUserHandler(db *sql.DB) http.HandlerFunc {
 		// Send JSON response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("Failed to encode response: %v", err)
+		}
+	}
+}
+
+// getUserHandler handles GET /user/{id} and GET /user/{friend_code} requests
+func getUserHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Only accept GET requests
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Extract identifier from URL path
+		// Expected format: /user/{id} or /user/{friend_code}
+		path := strings.TrimPrefix(r.URL.Path, "/user/")
+		identifier := strings.TrimSpace(path)
+
+		if identifier == "" {
+			http.Error(w, "User ID or friend code is required", http.StatusBadRequest)
+			return
+		}
+
+		// Try to determine if it's a UUID or friend code
+		var id, displayName, friendCode string
+		var err error
+
+		// Check if it's a valid UUID format
+		if _, uuidErr := uuid.Parse(identifier); uuidErr == nil {
+			// It's a UUID - query by ID
+			err = db.QueryRow(`
+				SELECT id, COALESCE(display_name, ''), friend_code
+				FROM "user"
+				WHERE id = $1
+			`, identifier).Scan(&id, &displayName, &friendCode)
+		} else {
+			// Not a UUID - treat as friend code
+			// Friend codes are in format XXXX-XXXX (9 characters including dash)
+			err = db.QueryRow(`
+				SELECT id, COALESCE(display_name, ''), friend_code
+				FROM "user"
+				WHERE friend_code = $1
+			`, identifier).Scan(&id, &displayName, &friendCode)
+		}
+
+		if err == sql.ErrNoRows {
+			http.Error(w, "User not found", http.StatusNotFound)
+			return
+		}
+
+		if err != nil {
+			log.Printf("Failed to fetch user: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		// Prepare response
+		response := GetUserResponse{
+			ID:          id,
+			DisplayName: displayName,
+			FriendCode:  friendCode,
+		}
+
+		// Send JSON response
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			log.Printf("Failed to encode response: %v", err)
 		}

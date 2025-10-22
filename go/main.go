@@ -38,6 +38,7 @@ func main() {
 
 	// Register routes
 	http.HandleFunc("/health", health)
+	http.HandleFunc("/user/", userRouter(db)) // Note the trailing slash for /user/{id}
 	http.HandleFunc("/user", createUserHandler(db))
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
