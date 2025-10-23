@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -63,51 +62,9 @@ type UpdateDisplayNameResponse struct {
 	Message     string `json:"message"`
 }
 
-// userRouter routes requests to /user, /user/{id}, and /user/{id}/name
-func userRouter(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// POST /user - Create new user
-		if r.URL.Path == "/user" && r.Method == http.MethodPost {
-			createUserHandler(db)(w, r)
-			return
-		}
-
-		// PUT /user/{id}/name - Update display name (requires auth)
-		if matchesPattern(r.URL.Path, "/user/{id}/name") && r.Method == http.MethodPut {
-			params := extractPathParams(r.URL.Path, "/user/{id}/name")
-			ctx := r.Context()
-			for key, value := range params {
-				ctx = context.WithValue(ctx, contextKey("path_"+key), value)
-			}
-			authMiddleware(db, updateDisplayNameHandler(db))(w, r.WithContext(ctx))
-			return
-		}
-
-		// GET /user/{id} - Get user info
-		if matchesPattern(r.URL.Path, "/user/{id}") && r.Method == http.MethodGet {
-			params := extractPathParams(r.URL.Path, "/user/{id}")
-			ctx := r.Context()
-			for key, value := range params {
-				ctx = context.WithValue(ctx, contextKey("path_"+key), value)
-			}
-			getUserHandler(db)(w, r.WithContext(ctx))
-			return
-		}
-
-		// No match
-		http.Error(w, "Not found", http.StatusNotFound)
-	}
-}
-
 // createUserHandler handles POST /user requests
 func createUserHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Only accept POST requests
-		if r.Method != http.MethodPost {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
 		// Generate new UUID for the user
 		userID := uuid.New()
 
@@ -197,14 +154,8 @@ func createUserHandler(db *sql.DB) http.HandlerFunc {
 // getUserHandler handles GET /user/{id} and GET /user/{friend_code} requests
 func getUserHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Only accept GET requests
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		// Extract identifier from URL path using router utility
-		identifier := GetPathParam(r, "id")
+		// Extract identifier from URL path parameter (Go 1.22+)
+		identifier := r.PathValue("id")
 
 		if identifier == "" {
 			http.Error(w, "User ID or friend code is required", http.StatusBadRequest)
@@ -327,12 +278,6 @@ func isDuplicateKeyError(err error) bool {
 // Requires authentication via authMiddleware
 func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Only accept PUT requests
-		if r.Method != http.MethodPut {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
 		// Get authenticated user ID from context
 		authenticatedUserID, ok := GetUserID(r)
 		if !ok {
@@ -340,8 +285,8 @@ func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Extract target user ID from URL path using router utility
-		targetUserID := GetPathParam(r, "id")
+		// Extract target user ID from URL path parameter (Go 1.22+)
+		targetUserID := r.PathValue("id")
 
 		if targetUserID == "" {
 			http.Error(w, "User ID is required", http.StatusBadRequest)

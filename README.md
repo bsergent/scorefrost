@@ -56,8 +56,8 @@ Requires `Authorization: Bearer {api_key}` header
 ### Admin Endpoints
 Requires dev user authentication (`DEV_API_KEY`)
 
-- `GET /admin/pending-display-names` - List all pending display name changes
-- `PUT /admin/display-names/{user_id}` - Approve/reject display name change
+- `GET /admin/names` - List all pending display name changes
+- `PUT /admin/names/{user_id}` - Approve/reject display name change
   - Request body: `{"approve": true}` or `{"approve": false}`
 
 ### Default Users

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
@@ -42,18 +41,18 @@ type PendingDisplayName struct {
 	DisplayNameStatus  int    `json:"display_name_status"`
 }
 
-// GetPendingDisplayNamesResponse represents the response for GET /admin/pending-display-names
+// GetPendingDisplayNamesResponse represents the response for GET /admin/names
 type GetPendingDisplayNamesResponse struct {
 	PendingNames []PendingDisplayName `json:"pending_names"`
 	Count        int                  `json:"count"`
 }
 
-// EvaluateDisplayNameRequest represents the request body for PUT /admin/display-names/{user_id}
+// EvaluateDisplayNameRequest represents the request body for PUT /admin/names/{userID}
 type EvaluateDisplayNameRequest struct {
 	Approve bool `json:"approve"`
 }
 
-// EvaluateDisplayNameResponse represents the response for PUT /admin/display-names/{user_id}
+// EvaluateDisplayNameResponse represents the response for PUT /admin/names/{userID}
 type EvaluateDisplayNameResponse struct {
 	UserID        string `json:"user_id"`
 	DisplayName   string `json:"display_name"`
@@ -61,40 +60,9 @@ type EvaluateDisplayNameResponse struct {
 	StatusMessage string `json:"status_message"`
 }
 
-// adminRouter routes admin requests
-func adminRouter(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// GET /admin/pending-display-names - Get all pending display name changes
-		if r.URL.Path == "/admin/pending-display-names" && r.Method == http.MethodGet {
-			adminMiddleware(db, getPendingDisplayNamesHandler(db))(w, r)
-			return
-		}
-
-		// PUT /admin/display-names/{user_id} - Approve/reject a pending display name
-		if matchesPattern(r.URL.Path, "/admin/display-names/{user_id}") && r.Method == http.MethodPut {
-			params := extractPathParams(r.URL.Path, "/admin/display-names/{user_id}")
-			ctx := r.Context()
-			for key, value := range params {
-				ctx = context.WithValue(ctx, contextKey("path_"+key), value)
-			}
-			adminMiddleware(db, evaluateDisplayNameHandler(db))(w, r.WithContext(ctx))
-			return
-		}
-
-		// No match
-		http.Error(w, "Not found", http.StatusNotFound)
-	}
-}
-
-// getPendingDisplayNamesHandler handles GET /admin/pending-display-names
+// getPendingDisplayNamesHandler handles GET /admin/names
 func getPendingDisplayNamesHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Only accept GET requests
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
 		// Call stored procedure to get all pending display names
 		rows, err := db.Query(`SELECT * FROM get_pending_display_names()`)
 		if err != nil {
@@ -142,17 +110,11 @@ func getPendingDisplayNamesHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// evaluateDisplayNameHandler handles PUT /admin/display-names/{user_id}
+// evaluateDisplayNameHandler handles PUT /admin/names/{user_id}
 func evaluateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Only accept PUT requests
-		if r.Method != http.MethodPut {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		// Extract user ID from URL path
-		userID := GetPathParam(r, "user_id")
+		// Extract user ID from URL path parameter (Go 1.22+)
+		userID := r.PathValue("user_id")
 		if userID == "" {
 			http.Error(w, "User ID is required", http.StatusBadRequest)
 			return

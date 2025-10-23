@@ -26,7 +26,7 @@ Content-Type: application/json
 
 ### 3. Get pending display names (as admin)
 ```http
-GET http://localhost:8080/admin/pending-display-names
+GET http://localhost:8080/admin/names
 Authorization: Bearer dev_key_change_in_production
 ```
 
@@ -48,7 +48,7 @@ Expected response:
 
 ### 4. Approve the display name (as admin)
 ```http
-PUT http://localhost:8080/admin/display-names/{user_id_from_step_1}
+PUT http://localhost:8080/admin/names/{user_id_from_step_1}
 Authorization: Bearer dev_key_change_in_production
 Content-Type: application/json
 
@@ -79,7 +79,7 @@ Should show `display_name: "TestUser123"`
 Follow steps 1-3, then:
 
 ```http
-PUT http://localhost:8080/admin/display-names/{user_id}
+PUT http://localhost:8080/admin/names/{user_id}
 Authorization: Bearer dev_key_change_in_production
 Content-Type: application/json
 
@@ -94,20 +94,20 @@ Expected: Display name reverts to previous value, pending is cleared.
 
 ### Non-admin user cannot access admin endpoints
 ```http
-GET http://localhost:8080/admin/pending-display-names
+GET http://localhost:8080/admin/names
 Authorization: Bearer {regular_user_api_key}
 ```
 Expected: 403 Forbidden
 
 ### No authentication
 ```http
-GET http://localhost:8080/admin/pending-display-names
+GET http://localhost:8080/admin/names
 ```
 Expected: 401 Unauthorized
 
 ### Wrong admin key
 ```http
-GET http://localhost:8080/admin/pending-display-names
+GET http://localhost:8080/admin/names
 Authorization: Bearer wrong_key
 ```
 Expected: 401 Unauthorized

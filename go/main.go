@@ -45,10 +45,15 @@ func main() {
 
 	// Register routes
 	mux.HandleFunc("/health", health)
-	mux.HandleFunc("/user", userRouter(db))                         // Handles /user (POST)
-	mux.HandleFunc("/user/", userRouter(db))                        // Handles /user/{id} (GET) and /user/{id}/name (PUT)
-	mux.HandleFunc("/admin/pending-display-names", adminRouter(db)) // Admin: GET pending display names
-	mux.HandleFunc("/admin/display-names/", adminRouter(db))        // Admin: PUT /admin/display-names/{user_id}
+
+	// User routes
+	mux.HandleFunc("POST /user", createUserHandler(db))
+	mux.HandleFunc("GET /user/{id}", getUserHandler(db))
+	mux.HandleFunc("PUT /user/{id}/name", authMiddleware(db, updateDisplayNameHandler(db)))
+
+	// Admin routes
+	mux.HandleFunc("GET /admin/names", adminMiddleware(db, getPendingDisplayNamesHandler(db)))
+	mux.HandleFunc("PUT /admin/names/{user_id}", adminMiddleware(db, evaluateDisplayNameHandler(db)))
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
