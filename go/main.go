@@ -48,6 +48,11 @@ func main() {
 	mux.HandleFunc("/user/", userRouter(db)) // Note the trailing slash for /user/{id}
 	mux.HandleFunc("/user", createUserHandler(db))
 
+	// Example: Protected endpoint (requires authentication)
+	// Uncomment to enable:
+	// mux.HandleFunc("/api/me", authMiddleware(db, getMyProfile))
+	// mux.HandleFunc("/api/my-scores", authMiddleware(db, getMyScores(db)))
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
