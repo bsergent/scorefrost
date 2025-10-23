@@ -50,15 +50,33 @@ type GetUserResponse struct {
 	FriendCode  string `json:"friend_code"`
 }
 
+// UpdateDisplayNameRequest represents the JSON request body for PUT /user/{id}/name
+type UpdateDisplayNameRequest struct {
+	DisplayName string `json:"display_name"`
+}
+
+// UpdateDisplayNameResponse represents the JSON response for PUT /user/{id}/name
+type UpdateDisplayNameResponse struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+	Message     string `json:"message"`
+}
+
 // userRouter routes requests to /user and /user/{id}
 func userRouter(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Check if it's /user/{id}/name - delegate to updateDisplayNameHandler with auth
+		if strings.HasSuffix(r.URL.Path, "/name") && r.Method == http.MethodPut {
+			authMiddleware(db, updateDisplayNameHandler(db))(w, r)
+			return
+		}
+
 		// /user/{id} pattern - delegate to getUserHandler
 		if r.URL.Path != "/user/" && len(r.URL.Path) > len("/user/") {
 			getUserHandler(db)(w, r)
 			return
 		}
-		
+
 		// Exact /user/ match with trailing slash - not allowed
 		http.Error(w, "Not found", http.StatusNotFound)
 	}
@@ -288,4 +306,94 @@ func isDuplicateKeyError(err error) bool {
 	return strings.Contains(errMsg, "duplicate key") ||
 		strings.Contains(errMsg, "unique constraint") ||
 		strings.Contains(errMsg, "23505")
+}
+
+// updateDisplayNameHandler handles PUT /user/{id}/name requests
+// Requires authentication via authMiddleware
+func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Only accept PUT requests
+		if r.Method != http.MethodPut {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Get authenticated user ID from context
+		authenticatedUserID, ok := GetUserID(r)
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// Extract target user ID from URL path
+		// Expected format: /user/{id}/name
+		path := strings.TrimPrefix(r.URL.Path, "/user/")
+		path = strings.TrimSuffix(path, "/name")
+		targetUserID := strings.TrimSpace(path)
+
+		if targetUserID == "" {
+			http.Error(w, "User ID is required", http.StatusBadRequest)
+			return
+		}
+
+		// Validate UUID format
+		if _, err := uuid.Parse(targetUserID); err != nil {
+			http.Error(w, "Invalid user ID format", http.StatusBadRequest)
+			return
+		}
+
+		// Verify the authenticated user is updating their own name
+		if authenticatedUserID != targetUserID {
+			http.Error(w, "Forbidden: You can only update your own display name", http.StatusForbidden)
+			return
+		}
+
+		// Parse request body
+		var req UpdateDisplayNameRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+
+		// Validate display name
+		newDisplayName := strings.TrimSpace(req.DisplayName)
+		if newDisplayName == "" {
+			http.Error(w, "Display name cannot be empty", http.StatusBadRequest)
+			return
+		}
+
+		if len(newDisplayName) > 64 {
+			http.Error(w, "Display name must be 64 characters or less", http.StatusBadRequest)
+			return
+		}
+
+		// Update display name in database (sets display_name_pending)
+		_, err := db.Exec(`
+			UPDATE "user"
+			SET display_name_pending = $1,
+			    display_name_status = 0
+			WHERE id = $2
+		`, newDisplayName, authenticatedUserID)
+
+		if err != nil {
+			log.Printf("Failed to update display name: %v", err)
+			http.Error(w, "Failed to update display name", http.StatusInternalServerError)
+			return
+		}
+
+		// Prepare response
+		response := UpdateDisplayNameResponse{
+			ID:          authenticatedUserID,
+			DisplayName: newDisplayName,
+			Message:     "Display name updated and pending approval",
+		}
+
+		// Send JSON response
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("Failed to encode response: %v", err)
+		}
+	}
 }
