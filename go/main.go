@@ -45,8 +45,8 @@ func main() {
 
 	// Register routes
 	mux.HandleFunc("/health", health)
-	mux.HandleFunc("/user/", userRouter(db)) // Note the trailing slash for /user/{id}
-	mux.HandleFunc("/user", createUserHandler(db))
+	mux.HandleFunc("/user", userRouter(db))  // Handles /user (POST)
+	mux.HandleFunc("/user/", userRouter(db)) // Handles /user/{id} (GET) and /user/{id}/name (PUT)
 
 	// Example: Protected endpoint (requires authentication)
 	// Uncomment to enable:
