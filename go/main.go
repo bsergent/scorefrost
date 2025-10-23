@@ -45,13 +45,10 @@ func main() {
 
 	// Register routes
 	mux.HandleFunc("/health", health)
-	mux.HandleFunc("/user", userRouter(db))  // Handles /user (POST)
-	mux.HandleFunc("/user/", userRouter(db)) // Handles /user/{id} (GET) and /user/{id}/name (PUT)
-
-	// Example: Protected endpoint (requires authentication)
-	// Uncomment to enable:
-	// mux.HandleFunc("/api/me", authMiddleware(db, getMyProfile))
-	// mux.HandleFunc("/api/my-scores", authMiddleware(db, getMyScores(db)))
+	mux.HandleFunc("/user", userRouter(db))                         // Handles /user (POST)
+	mux.HandleFunc("/user/", userRouter(db))                        // Handles /user/{id} (GET) and /user/{id}/name (PUT)
+	mux.HandleFunc("/admin/pending-display-names", adminRouter(db)) // Admin: GET pending display names
+	mux.HandleFunc("/admin/display-names/", adminRouter(db))        // Admin: PUT /admin/display-names/{user_id}
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

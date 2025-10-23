@@ -1,0 +1,3 @@
+### Get all pending display names (requires dev user authentication)
+GET http://localhost:8080/admin/pending-display-names
+Authorization: Bearer dev_key_change_in_production

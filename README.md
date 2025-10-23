@@ -1,6 +1,21 @@
 # ScoreFrost
 Lightweight leaderboard and analytics solution for game jams.
 
+## Setup
+
+### Environment Variables
+Copy `.env.example` to `.env` and configure:
+```bash
+cp .env.example .env
+```
+
+Key variables:
+- `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDB` - PostgreSQL connection
+- `API_PORT` - API server port (default: 8080)
+- `DEV_API_KEY` - Admin authentication key for dev user
+
+**Important:** Change `DEV_API_KEY` in production!
+
 ## Developing Locally
 Only start database and run API locally from the root directory:
 `docker-compose up -d db`
@@ -25,4 +40,29 @@ Stop database
 `docker stop <id>`
 
 `docker system prune`
+
+## API Endpoints
+
+### Public Endpoints
+- `GET /health` - Health check
+- `POST /user` - Create new user, returns API key (store this!)
+- `GET /user/{id}` - Get user info by UUID or friend code
+
+### Authenticated Endpoints
+Requires `Authorization: Bearer {api_key}` header
+
+- `PUT /user/{id}/name` - Update display name (sets pending, requires approval)
+
+### Admin Endpoints
+Requires dev user authentication (`DEV_API_KEY`)
+
+- `GET /admin/pending-display-names` - List all pending display name changes
+- `PUT /admin/display-names/{user_id}` - Approve/reject display name change
+  - Request body: `{"approve": true}` or `{"approve": false}`
+
+### Default Users
+- **Anonymous** (`00000000-0000-0000-0000-000000000000`) - Friend code: `0000-0000`
+- **Dev** (`00000000-0000-0000-0000-000000000001`) - Friend code: `0000-0001`
+  - Admin access for display name moderation
+  - Authenticate using `DEV_API_KEY` environment variable
 

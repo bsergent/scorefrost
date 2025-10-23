@@ -78,11 +78,12 @@ CREATE INDEX IF NOT EXISTS idx_user_relation_source ON user_relation(user_id_sou
 CREATE INDEX IF NOT EXISTS idx_user_relation_target ON user_relation(user_id_target);
 CREATE INDEX IF NOT EXISTS idx_user_relation_status ON user_relation(status);
 
--- Insert default users (Anonymous and Dev)
+-- Insert anonymous users (Anonymous and Dev)
+-- Note: Dev user's API key hash is set by the application on startup
 INSERT INTO "user" (id, friend_code, display_name, display_name_status, api_key_hash)
 VALUES 
-    ('00000000-0000-0000-0000-000000000000', '0000-0000', 'Anonymous', 1, ''),
-    ('00000000-0000-0000-0000-000000000001', '0000-0001', 'Dev', 1, '')
+    ('00000000-0000-0000-0000-000000000000', '0000-0000', 'Anonymous', 1, 'anonymous_no_key'),
+    ('00000000-0000-0000-0000-000000000001', '0000-0001', 'Dev', 1, 'placeholder')
 ON CONFLICT (id) DO NOTHING;
 
 -- Function to create a new user
@@ -98,5 +99,102 @@ BEGIN
     VALUES (p_id, p_friend_code, p_display_name, 1, p_api_key_hash);
     
     RETURN p_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to get all pending display names
+-- Returns table with user info and pending names
+CREATE OR REPLACE FUNCTION get_pending_display_names()
+RETURNS TABLE (
+    user_id UUID,
+    friend_code VARCHAR(9),
+    current_display_name VARCHAR(64),
+    pending_display_name VARCHAR(64),
+    display_name_status SMALLINT
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        id,
+        u.friend_code,
+        COALESCE(u.display_name, '')::VARCHAR(64) as current_display_name,
+        COALESCE(u.display_name_pending, '')::VARCHAR(64) as pending_display_name,
+        u.display_name_status
+    FROM "user" u
+    WHERE u.display_name_status = 0
+      AND u.display_name_pending IS NOT NULL
+      AND u.display_name_pending != ''
+    ORDER BY u.date_time_created_utc ASC;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to approve a pending display name
+-- Returns the final display name and status
+CREATE OR REPLACE FUNCTION approve_display_name(p_user_id UUID)
+RETURNS TABLE (
+    final_display_name VARCHAR(64),
+    status SMALLINT
+) AS $$
+DECLARE
+    v_pending_name VARCHAR(64);
+BEGIN
+    -- Check if user has a pending display name
+    SELECT display_name_pending INTO v_pending_name
+    FROM "user"
+    WHERE id = p_user_id;
+    
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'User not found';
+    END IF;
+    
+    IF v_pending_name IS NULL OR TRIM(v_pending_name) = '' THEN
+        RAISE EXCEPTION 'No pending display name for this user';
+    END IF;
+    
+    -- Approve: Set display_name to pending value, clear pending, set status to approved (1)
+    UPDATE "user"
+    SET display_name = display_name_pending,
+        display_name_pending = NULL,
+        display_name_status = 1
+    WHERE id = p_user_id;
+    
+    -- Return the approved display name and status
+    RETURN QUERY
+    SELECT v_pending_name, 1::SMALLINT;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to reject a pending display name
+-- Returns the current display name and status
+CREATE OR REPLACE FUNCTION reject_display_name(p_user_id UUID)
+RETURNS TABLE (
+    final_display_name VARCHAR(64),
+    status SMALLINT
+) AS $$
+DECLARE
+    v_current_name VARCHAR(64);
+    v_pending_name VARCHAR(64);
+BEGIN
+    -- Check if user has a pending display name
+    SELECT display_name, display_name_pending INTO v_current_name, v_pending_name
+    FROM "user"
+    WHERE id = p_user_id;
+    
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'User not found';
+    END IF;
+    
+    IF v_pending_name IS NULL OR TRIM(v_pending_name) = '' THEN
+        RAISE EXCEPTION 'No pending display name for this user';
+    END IF;
+    
+    -- Reject: Clear pending, set status to rejected (2), keep current display_name
+    UPDATE "user"
+    SET display_name_status = 2
+    WHERE id = p_user_id;
+    
+    -- Return the current display name and status
+    RETURN QUERY
+    SELECT COALESCE(v_current_name, ''), 2::SMALLINT;
 END;
 $$ LANGUAGE plpgsql;
