@@ -1,7 +1,6 @@
 package main
 
 import (
-	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -84,18 +83,8 @@ func (rl *RateLimiter) cleanup() {
 // RateLimitMiddleware wraps an http.Handler with rate limiting
 func RateLimitMiddleware(rl *RateLimiter, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Extract IP address (handle X-Forwarded-For for proxies)
-		ip := r.Header.Get("X-Forwarded-For")
-		if ip == "" {
-			ip = r.Header.Get("X-Real-IP")
-		}
-		if ip == "" {
-			ip = r.RemoteAddr
-			// Strip port from RemoteAddr (format is "IP:port")
-			if host, _, err := net.SplitHostPort(ip); err == nil {
-				ip = host
-			}
-		}
+		// Extract IP address using shared helper
+		ip := getIPAddress(r)
 
 		// Check rate limit
 		if !rl.Allow(ip) {

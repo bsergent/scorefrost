@@ -4,9 +4,38 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 )
+
+// getIPAddress extracts the IP address from a request
+// Handles X-Forwarded-For for proxies and strips port from RemoteAddr
+func getIPAddress(r *http.Request) string {
+	// Check proxy headers first
+	ip := r.Header.Get("X-Forwarded-For")
+	if ip != "" {
+		// X-Forwarded-For can contain multiple IPs, take the first one
+		if idx := strings.Index(ip, ","); idx != -1 {
+			ip = ip[:idx]
+		}
+		return strings.TrimSpace(ip)
+	}
+
+	ip = r.Header.Get("X-Real-IP")
+	if ip != "" {
+		return ip
+	}
+
+	// Fall back to RemoteAddr
+	ip = r.RemoteAddr
+	// Strip port from RemoteAddr (format is "IP:port")
+	if host, _, err := net.SplitHostPort(ip); err == nil {
+		return host
+	}
+
+	return ip
+}
 
 // Context key types to avoid collisions
 type contextKey string
@@ -49,7 +78,7 @@ func authMiddleware(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
 		`, hashedKey).Scan(&userID, &displayName, &friendCode)
 
 		if err == sql.ErrNoRows {
-			log.Printf("Authentication failed: Invalid API key")
+			log.Printf("Authentication failed: Invalid API key from IP %s", getIPAddress(r))
 			http.Error(w, "Unauthorized: Invalid API key", http.StatusUnauthorized)
 			return
 		}
