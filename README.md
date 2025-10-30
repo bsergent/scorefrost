@@ -13,8 +13,9 @@ Key variables:
 - `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDB` - PostgreSQL connection
 - `API_PORT` - API server port (default: 8080)
 - `DEV_API_KEY` - Admin authentication key for dev user
+- `SOLUTION_SALT` - Secret salt for solution hash verification
 
-**Important:** Change `DEV_API_KEY` in production!
+**Important:** Change `DEV_API_KEY` and `SOLUTION_SALT` in production!
 
 ## Developing Locally
 Only start database and run API locally from the root directory:
@@ -52,6 +53,72 @@ Stop database
 Requires `Authorization: Bearer {api_key}` header
 
 - `PUT /user/{id}/name` - Update display name (sets pending, requires approval)
+- `POST /score/submit` - Submit solution with scores for a level
+
+#### Score Submission
+Submit a completed level solution with multiple score types.
+
+**Request:**
+```json
+POST /score/submit
+Authorization: Bearer {user_api_key}
+Content-Type: application/json
+
+{
+  "level_id": "level_001",
+  "level_version": 1,
+  "game_version": "1.0.0",
+  "solution": "SGVsbG8gV29ybGQ=",
+  "solution_hash": "47b1ccfc46209749ca88f8ee4556ef7de42cbd94e297a79b3f8efd04ce663588",
+  "scores": {
+    "time_ms": 12500,
+    "striping": 85,
+    "fuel": 750,
+    "stars": 3
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "solution_id": 42,
+  "message": "Score submitted successfully"
+}
+```
+
+**Fields:**
+- `level_id` (string) - Unique identifier for the level
+- `level_version` (int) - Version number of the level
+- `game_version` (string) - Version of the game client
+- `solution` (string) - Base64 encoded solution data
+- `solution_hash` (string) - SHA256 hash of solution + secret salt for integrity verification
+- `scores` (object) - Map of score type to score value
+
+**Available Score Types:**
+- `time_ms` - Completion time in milliseconds (lower is better)
+- `striping` - Coverage/striping percentage (higher is better)
+- `fuel` - Fuel consumption (lower is better)
+- `stars` - Star rating achieved (higher is better)
+
+**Security:**
+- Solution integrity is verified using a salted hash
+- All operations are atomic via stored procedure
+- Invalid score types are rejected
+
+**Solution Hash Calculation:**
+```javascript
+// Client-side (example)
+const solutionBase64 = btoa(solutionData); // Base64 encode solution
+const saltedSolution = solutionBase64 + SECRET_SALT;
+const solutionHash = sha256(saltedSolution); // SHA256 hash
+```
+
+```bash
+# Utility for testing hash calculation
+go run utils/hash-util.go "SGVsbG8gV29ybGQ=" "your_secret_salt"
+```
 
 ### Admin Endpoints
 Requires dev user authentication (`DEV_API_KEY`)

@@ -51,6 +51,9 @@ func main() {
 	mux.HandleFunc("GET /user/{id}", getUserHandler(db))
 	mux.HandleFunc("PUT /user/{id}/name", authMiddleware(db, updateDisplayNameHandler(db)))
 
+	// Score routes
+	mux.HandleFunc("POST /score/submit", authMiddleware(db, submitScoreHandler(db)))
+
 	// Admin routes
 	mux.HandleFunc("GET /admin/names", adminMiddleware(db, getPendingDisplayNamesHandler(db)))
 	mux.HandleFunc("PUT /admin/names/{user_id}", adminMiddleware(db, evaluateDisplayNameHandler(db)))

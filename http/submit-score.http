@@ -1,0 +1,22 @@
+### Submit Score
+POST {{host}}/score/submit
+Content-Type: application/json
+Authorization: Bearer {{dev_api_key}}
+
+{
+  "level_id": "level_001",
+  "level_version": 1,
+  "game_version": "1.0.0+0001-dev",
+  "solution": "SGVsbG8gV29ybGQ=",
+  "solution_hash": "47b1ccfc46209749ca88f8ee4556ef7de42cbd94e297a79b3f8efd04ce663588",
+  "scores": {
+    "time_ms": 12500,
+    "striping": 85,
+    "fuel": 750,
+    "stars": 3
+  }
+}
+
+### Variables
+@host = http://localhost:8080
+@dev_api_key = dev_key_change_in_production
