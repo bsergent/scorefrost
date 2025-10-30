@@ -3,6 +3,10 @@ services:
     image: postgres:15
     container_name: scorefrost-db
     env_file: .env
+    environment:
+      - POSTGRES_USER=${PGUSER}
+      - POSTGRES_PASSWORD=${PGPASSWORD}
+      - POSTGRES_DB=${PGDATABASE}
     ports:
       - "${PGPORT}:${PGPORT}"
     volumes:
