@@ -1,0 +1,35 @@
+### Get Best Scores - Global Scope
+GET {{host}}/score/best?levels=level_001.1,level_002.1&scope=global
+Authorization: Bearer {{dev_api_key}}
+
+### Get Best Scores - Personal Scope
+GET {{host}}/score/best?levels=level_001.1&scope=personal
+Authorization: Bearer {{dev_api_key}}
+
+### Get Best Scores - Default Scope (Global)
+GET {{host}}/score/best?levels=level_001.1
+Authorization: Bearer {{dev_api_key}}
+
+### Get Best Scores - Latest Versions (no version specified)
+GET {{host}}/score/best?levels=level_001,level_002&scope=global
+Authorization: Bearer {{dev_api_key}}
+
+### Get Best Scores - Mixed Versions (some with version, some without)
+GET {{host}}/score/best?levels=level_001,level_002.1,level_003.2&scope=global
+Authorization: Bearer {{dev_api_key}}
+
+### Get Best Scores - Multiple Levels
+GET {{host}}/score/best?levels=level_001.1,level_001.2,level_002.1
+Authorization: Bearer {{dev_api_key}}
+
+### Get Best Scores - Invalid Level Format (should error)
+GET {{host}}/score/best?levels=invalid_format
+Authorization: Bearer {{dev_api_key}}
+
+### Get Best Scores - Missing levels parameter (should error)
+GET {{host}}/score/best?scope=global
+Authorization: Bearer {{dev_api_key}}
+
+### Variables
+@host = http://localhost:8080
+@dev_api_key = dev_key_change_in_production

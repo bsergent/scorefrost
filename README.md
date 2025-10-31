@@ -54,6 +54,7 @@ Requires `Authorization: Bearer {api_key}` header
 
 - `PUT /user/{id}/name` - Update display name (sets pending, requires approval)
 - `POST /score/submit` - Submit solution with scores for a level
+- `GET /score/best` - Get best scores for specified levels
 
 #### Score Submission
 Submit a completed level solution with multiple score types.
@@ -88,7 +89,7 @@ Content-Type: application/json
 }
 ```
 
-**Fields:**
+**Score Submission Fields:**
 - `level_id` (string) - Unique identifier for the level
 - `level_version` (int) - Version number of the level
 - `game_version` (string) - Version of the game client
@@ -119,6 +120,45 @@ const solutionHash = sha256(saltedSolution); // SHA256 hash
 # Utility for testing hash calculation
 go run utils/hash-util.go "SGVsbG8gV29ybGQ=" "your_secret_salt"
 ```
+
+#### Best Scores Retrieval
+Get the best scores for specified levels within a given scope.
+
+**Request:**
+```bash
+GET /score/best?levels=level_001.1,level_002&scope=global
+Authorization: Bearer {user_api_key}
+```
+
+**Response:**
+```json
+{
+  "scores": [
+    {
+      "level_id": "level_001",
+      "level_version": 1,
+      "score_type": "time_ms",
+      "best_score": 12500,
+      "user_id": "uuid-here",
+      "display_name": "PlayerName",
+      "friend_code": "ABCD-1234"
+    }
+  ],
+  "count": 1,
+  "scope": "global"
+}
+```
+
+**Parameters:**
+- `levels` - Comma-separated list of level specifications:
+  - `level_001.1` - Specific level and version
+  - `level_001` - Latest version of level (automatically determined)
+  - Mixed: `level_001,level_002.1,level_003.2`
+- `scope` - Score scope (defaults to `global`):
+  - `personal` - User's own best scores
+  - `friends` - Best among user's friends (not yet implemented)
+  - `regional` - Regional leaderboards (not yet implemented)
+  - `global` - Worldwide best scores
 
 ### Admin Endpoints
 Requires dev user authentication (`DEV_API_KEY`)

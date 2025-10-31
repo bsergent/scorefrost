@@ -53,6 +53,7 @@ func main() {
 
 	// Score routes
 	mux.HandleFunc("POST /score/submit", authMiddleware(db, submitScoreHandler(db)))
+	mux.HandleFunc("GET /score/best", authMiddleware(db, bestScoresHandler(db)))
 
 	// Admin routes
 	mux.HandleFunc("GET /admin/names", adminMiddleware(db, getPendingDisplayNamesHandler(db)))
