@@ -1,0 +1,65 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run Unit Tests",
+            "type": "shell",
+            "command": "go",
+            "args": ["test", "./go", "-v"],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "problemMatcher": ["$go"]
+        },
+        {
+            "label": "Run Integration Tests",
+            "type": "shell",
+            "command": "go",
+            "args": ["test", "-tags=integration", "./go", "-v"],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "dependsOn": "Start Database",
+            "problemMatcher": ["$go"]
+        },
+        {
+            "label": "Run All Tests",
+            "type": "shell",
+            "command": "echo",
+            "args": ["Running unit tests..."],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Run Unit Tests",
+                "Run Integration Tests"
+            ]
+        },
+        {
+            "label": "Start Database",
+            "type": "shell",
+            "command": "docker-compose",
+            "args": ["up", "-d", "db"],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            }
+        }
+    ]
+}

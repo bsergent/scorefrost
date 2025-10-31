@@ -1,0 +1,14 @@
+{
+  "go.coverMode": "atomic",
+  "go.testTimeout": "30s",
+  "go.testEnvVars": {
+    "DATABASE_URL": "postgres://scorefrost:password@localhost:5432/scorefrost?sslmode=disable"
+  },
+  "go.testFlags": [],
+  "go.buildTags": "",
+  "files.exclude": {
+    "**/.git": true,
+    "**/node_modules": true,
+    "**/*.exe": true
+  }
+}

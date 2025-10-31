@@ -37,33 +37,12 @@ func main() {
 	}
 
 	// Create rate limiter: 100 requests per minute per IP
+	// Initialize rate limiter
 	rateLimiter := NewRateLimiter(100, 1*time.Minute)
 	log.Println("Rate limiter initialized: 100 requests/minute per IP")
 
-	// Create a new ServeMux for routing
-	mux := http.NewServeMux()
-
-	// Register routes
-	mux.HandleFunc("/health", health)
-
-	// User routes
-	mux.HandleFunc("POST /user", createUserHandler(db))
-	mux.HandleFunc("GET /user/{id}", getUserHandler(db))
-	mux.HandleFunc("PUT /user/{id}/name", authMiddleware(db, updateDisplayNameHandler(db)))
-
-	// Score routes
-	mux.HandleFunc("POST /score/submit", authMiddleware(db, submitScoreHandler(db)))
-	mux.HandleFunc("GET /score/best", authMiddleware(db, bestScoresHandler(db)))
-
-	// Admin routes
-	mux.HandleFunc("GET /admin/names", adminMiddleware(db, getPendingDisplayNamesHandler(db)))
-	mux.HandleFunc("PUT /admin/names/{user_id}", adminMiddleware(db, evaluateDisplayNameHandler(db)))
-
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"service":"scorefrost","env_port":"%s"}`, apiPort)
-	})
+	// Set up routes using shared function
+	mux := setupRoutes(db)
 
 	// Wrap mux with rate limiting middleware
 	handler := RateLimitMiddleware(rateLimiter, mux)

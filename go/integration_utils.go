@@ -1,0 +1,292 @@
+//go:build integration
+
+package main
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+
+	_ "github.com/lib/pq"
+)
+
+// Integration test configuration
+type IntegrationConfig struct {
+	DBConnString string
+	SolutionSalt string
+	TestAPIKey   string
+	TestAPIKey2  string
+	TestUserID   string
+	TestUserID2  string
+}
+
+// Global integration test configuration
+var integrationConfig IntegrationConfig
+
+// Integration test utilities
+
+func connectToIntegrationDB() (*sql.DB, error) {
+	return sql.Open("postgres", integrationConfig.DBConnString)
+}
+
+func prepareIntegrationDatabase() {
+	db, err := connectToIntegrationDB()
+	if err != nil {
+		log.Fatalf("Failed to connect to integration database: %v", err)
+	}
+	defer db.Close()
+
+	// Clean up existing test data
+	cleanupIntegrationData()
+}
+
+func cleanupIntegrationData() {
+	db, err := connectToIntegrationDB()
+	if err != nil {
+		log.Printf("Warning: Failed to connect for cleanup: %v", err)
+		return
+	}
+	defer db.Close()
+
+	// Delete all user-created data (preserve system users and score types)
+	// Order matters due to foreign key constraints
+	queries := []string{
+		// Delete scores first (references solution)
+		"DELETE FROM score WHERE solution_id IN (SELECT id FROM solution WHERE user_id NOT IN ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-000000000001'))",
+		// Delete solutions (references user)
+		"DELETE FROM solution WHERE user_id NOT IN ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-000000000001')",
+		// Delete user relations (references user)
+		"DELETE FROM user_relation WHERE user_id_source NOT IN ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-000000000001') OR user_id_target NOT IN ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-000000000001')",
+		// Delete test users (keep system users)
+		"DELETE FROM \"user\" WHERE id NOT IN ('00000000-0000-0000-0000-000000000000', '00000000-0000-0000-0000-000000000001')",
+	}
+
+	for _, query := range queries {
+		if _, err := db.Exec(query); err != nil {
+			log.Printf("Warning: Failed to clean up test data: %v", err)
+		}
+	}
+}
+
+func createIntegrationTestUsers() {
+	// Create test server for user creation
+	db := mustConnectToIntegrationDB()
+	defer db.Close()
+
+	server := httptest.NewServer(setupTestRoutes(db))
+	defer server.Close()
+
+	// Create two test users
+	user1, err := createIntegrationTestUser(server.URL)
+	if err != nil {
+		log.Fatalf("Failed to create integration test user 1: %v", err)
+	}
+	integrationConfig.TestAPIKey = user1.APIKey
+	integrationConfig.TestUserID = user1.ID
+
+	user2, err := createIntegrationTestUser(server.URL)
+	if err != nil {
+		log.Fatalf("Failed to create integration test user 2: %v", err)
+	}
+	integrationConfig.TestAPIKey2 = user2.APIKey
+	integrationConfig.TestUserID2 = user2.ID
+}
+
+func mustConnectToIntegrationDB() *sql.DB {
+	db, err := connectToIntegrationDB()
+	if err != nil {
+		log.Fatalf("Failed to connect to integration database: %v", err)
+	}
+	return db
+}
+
+// Test user type for integration tests
+type IntegrationTestUser struct {
+	ID          string `json:"id"`
+	FriendCode  string `json:"friend_code"`
+	DisplayName string `json:"display_name"`
+	APIKey      string `json:"api_key"`
+}
+
+func createIntegrationTestUser(baseURL string) (*IntegrationTestUser, error) {
+	resp, err := http.Post(baseURL+"/user", "application/json", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var user IntegrationTestUser
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+// Integration test HTTP helpers
+
+func makeIntegrationRequest(server *httptest.Server, method, path string, headers map[string]string, body io.Reader) (*http.Response, error) {
+	url := server.URL + path
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set headers
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	client := &http.Client{}
+	return client.Do(req)
+}
+
+func makeIntegrationJSONRequest(server *httptest.Server, method, path string, headers map[string]string, payload interface{}, response interface{}) error {
+	var body io.Reader
+	if payload != nil {
+		jsonData, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("failed to marshal payload: %v", err)
+		}
+		body = bytes.NewBuffer(jsonData)
+	}
+
+	// Set default headers
+	if headers == nil {
+		headers = make(map[string]string)
+	}
+	headers["Content-Type"] = "application/json"
+
+	resp, err := makeIntegrationRequest(server, method, path, headers, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	if response != nil {
+		return json.NewDecoder(resp.Body).Decode(response)
+	}
+
+	return nil
+}
+
+func makeAuthenticatedIntegrationRequest(server *httptest.Server, method, path string, apiKey string, payload interface{}, response interface{}) error {
+	headers := map[string]string{
+		"Authorization": "Bearer " + apiKey,
+	}
+	return makeIntegrationJSONRequest(server, method, path, headers, payload, response)
+}
+
+// Score submission types for integration tests
+type IntegrationScoreSubmissionRequest struct {
+	Solution     string         `json:"solution"`
+	SolutionHash string         `json:"solution_hash"`
+	LevelID      string         `json:"level_id"`
+	LevelVersion int            `json:"level_version"`
+	GameVersion  string         `json:"game_version"`
+	Scores       map[string]int `json:"scores"`
+}
+
+type IntegrationScoreSubmissionResponse struct {
+	Success    bool   `json:"success"`
+	SolutionID int    `json:"solution_id"`
+	Message    string `json:"message"`
+}
+
+type IntegrationBestScoreEntry struct {
+	LevelID      string `json:"level_id"`
+	LevelVersion int    `json:"level_version"`
+	ScoreType    string `json:"score_type"`
+	BestScore    int    `json:"best_score"`
+	UserID       string `json:"user_id"`
+	DisplayName  string `json:"display_name"`
+	FriendCode   string `json:"friend_code"`
+}
+
+type IntegrationBestScoresResponse struct {
+	Scores []IntegrationBestScoreEntry `json:"scores"`
+	Count  int                         `json:"count"`
+	Scope  string                      `json:"scope"`
+}
+
+func submitIntegrationScore(server *httptest.Server, apiKey string, request IntegrationScoreSubmissionRequest) (*IntegrationScoreSubmissionResponse, error) {
+	var response IntegrationScoreSubmissionResponse
+	err := makeAuthenticatedIntegrationRequest(server, "POST", "/score/submit", apiKey, request, &response)
+	return &response, err
+}
+
+func getIntegrationBestScores(server *httptest.Server, apiKey string, levels []string, scope string) (*IntegrationBestScoresResponse, error) {
+	// Build query parameters
+	params := url.Values{}
+	params.Set("levels", strings.Join(levels, ","))
+	if scope != "" {
+		params.Set("scope", scope)
+	}
+
+	path := "/score/best?" + params.Encode()
+
+	var response IntegrationBestScoresResponse
+	err := makeAuthenticatedIntegrationRequest(server, "GET", path, apiKey, nil, &response)
+	return &response, err
+}
+
+// Hash calculation utility for integration tests
+func calculateIntegrationSolutionHash(solution string) string {
+	salted := solution + integrationConfig.SolutionSalt
+	hash := sha256.Sum256([]byte(salted))
+	return hex.EncodeToString(hash[:])
+}
+
+// Test assertion helpers for integration tests
+func assertIntegrationScoreExists(t *testing.T, scores []IntegrationBestScoreEntry, levelID string, scoreType string, expectedScore int) {
+	for _, score := range scores {
+		if score.LevelID == levelID && score.ScoreType == scoreType {
+			if score.BestScore != expectedScore {
+				t.Errorf("Expected score %d for %s/%s, got %d", expectedScore, levelID, scoreType, score.BestScore)
+			}
+			return
+		}
+	}
+	t.Errorf("Score not found for %s/%s", levelID, scoreType)
+}
+
+func assertIntegrationScoreCount(t *testing.T, response *IntegrationBestScoresResponse, expectedCount int) {
+	if response.Count != expectedCount {
+		t.Errorf("Expected count %d, got %d", expectedCount, response.Count)
+	}
+	if len(response.Scores) != expectedCount {
+		t.Errorf("Expected %d scores in array, got %d", expectedCount, len(response.Scores))
+	}
+}
+
+func assertIntegrationScoreUser(t *testing.T, scores []IntegrationBestScoreEntry, levelID string, scoreType string, expectedUserID string) {
+	for _, score := range scores {
+		if score.LevelID == levelID && score.ScoreType == scoreType {
+			if score.UserID != expectedUserID {
+				t.Errorf("Expected user %s for %s/%s, got %s", expectedUserID, levelID, scoreType, score.UserID)
+			}
+			return
+		}
+	}
+	t.Errorf("Score not found for %s/%s", levelID, scoreType)
+}

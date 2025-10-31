@@ -1,0 +1,39 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Unit Tests",
+            "type": "go",
+            "request": "launch",
+            "mode": "test",
+            "program": "${workspaceFolder}/go",
+            "args": ["-test.v"],
+            "buildFlags": "",
+            "env": {}
+        },
+        {
+            "name": "Debug Integration Tests",
+            "type": "go",
+            "request": "launch",
+            "mode": "test",
+            "program": "${workspaceFolder}/go",
+            "args": ["-test.v"],
+            "buildFlags": "-tags=integration",
+            "env": {
+                "DATABASE_URL": "postgres://scorefrost:password@localhost:5432/scorefrost?sslmode=disable"
+            },
+            "preLaunchTask": "Start Database"
+        },
+        {
+            "name": "Debug Main Application",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}/go/main.go",
+            "env": {
+                "DATABASE_URL": "postgres://scorefrost:password@localhost:5432/scorefrost?sslmode=disable"
+            },
+            "preLaunchTask": "Start Database"
+        }
+    ]
+}

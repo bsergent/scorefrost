@@ -42,6 +42,52 @@ Stop database
 
 `docker system prune`
 
+## Testing
+
+### Unit Tests (Fast)
+Standard Go unit tests that don't require external dependencies:
+```bash
+go test ./go -v
+```
+
+### Integration Tests (Full Database)
+Integration tests that use Docker database for complete API testing:
+```bash
+# Start database first
+docker-compose up -d db
+
+# Run integration tests
+go test -tags=integration ./go -v
+```
+
+**From VS Code:**
+- **Ctrl+Shift+P** → "Tasks: Run Task" → "Run Unit Tests" (fast, no setup)
+- **Ctrl+Shift+P** → "Tasks: Run Task" → "Run Integration Tests" (full database testing)
+- **Ctrl+Shift+P** → "Tasks: Run Task" → "Run All Tests" (runs both unit and integration)
+
+**Debug Support:**
+- **F5** → "Debug Unit Tests" (debug unit tests with breakpoints)
+- **F5** → "Debug Integration Tests" (debug integration tests with database)
+
+### Test Structure
+Following Go conventions, tests are located alongside the code:
+```
+go/
+├── main.go
+├── main_test.go              # Unit tests for core functions
+├── routes.go                 # Shared route setup (used by main + tests)
+├── integration_test.go       # Integration test setup (//go:build integration)
+├── integration_utils.go      # Integration test utilities (//go:build integration)
+├── integration_api_test.go   # Full API integration tests (//go:build integration)
+└── test_setup.go            # Test-specific route setup (//go:build integration)
+```
+
+**Test Coverage:**
+- ✅ Unit tests: Health endpoint, rate limiting, API key generation, display names
+- ✅ Integration tests: User creation, score submission, best scores retrieval, multiple levels, version detection
+- ✅ Database integration: Real PostgreSQL with cleanup between tests
+- ✅ HTTP testing: Uses httptest.NewServer for in-process testing
+
 ## API Endpoints
 
 ### Public Endpoints
