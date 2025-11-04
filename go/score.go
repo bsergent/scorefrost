@@ -47,6 +47,86 @@ type BestScoresResponse struct {
 	Scope  string           `json:"scope"`
 }
 
+// LeaderboardEntry represents a single leaderboard entry with ranking
+type LeaderboardEntry struct {
+	Rank         int    `json:"rank"`
+	LevelID      string `json:"level_id"`
+	LevelVersion int    `json:"level_version"`
+	ScoreType    string `json:"score_type"`
+	BestScore    int    `json:"best_score"`
+	UserID       string `json:"user_id"`
+	DisplayName  string `json:"display_name"`
+	FriendCode   string `json:"friend_code"`
+}
+
+// LeaderboardResponse represents the JSON response for leaderboard
+type LeaderboardResponse struct {
+	Scores     []LeaderboardEntry `json:"scores"`
+	Count      int                `json:"count"`
+	Scope      string             `json:"scope"`
+	Pagination PaginationInfo     `json:"pagination"`
+}
+
+// PaginationInfo represents pagination metadata
+type PaginationInfo struct {
+	Offset int `json:"offset"`
+	Size   int `json:"size"`
+	Total  int `json:"total"`
+}
+
+// parseLevelsParameter parses the levels CSV parameter and returns JSON array
+func parseLevelsParameter(levelsParam string) ([]map[string]any, error) {
+	levelSpecs := strings.Split(levelsParam, ",")
+	var levelsJSON []map[string]any
+
+	for _, levelSpec := range levelSpecs {
+		levelSpec = strings.TrimSpace(levelSpec)
+		if levelSpec == "" {
+			continue
+		}
+
+		parts := strings.Split(levelSpec, ".")
+		if len(parts) == 1 {
+			// No version specified, use -1 to indicate latest version
+			levelID := strings.TrimSpace(parts[0])
+			if levelID == "" {
+				return nil, fmt.Errorf("Invalid level format: %s. Level ID cannot be empty", levelSpec)
+			}
+			levelsJSON = append(levelsJSON, map[string]any{
+				"level_id":      levelID,
+				"level_version": -1,
+			})
+		} else if len(parts) == 2 {
+			// Version specified
+			levelID := strings.TrimSpace(parts[0])
+			levelVersionStr := strings.TrimSpace(parts[1])
+
+			if levelID == "" || levelVersionStr == "" {
+				return nil, fmt.Errorf("Invalid level format: %s. Both level ID and version are required when version is specified", levelSpec)
+			}
+
+			// Parse version as integer
+			levelVersion := 0
+			if _, err := fmt.Sscanf(levelVersionStr, "%d", &levelVersion); err != nil {
+				return nil, fmt.Errorf("Invalid level version: %s. Version must be a number", levelVersionStr)
+			}
+
+			levelsJSON = append(levelsJSON, map[string]any{
+				"level_id":      levelID,
+				"level_version": levelVersion,
+			})
+		} else {
+			return nil, fmt.Errorf("Invalid level format: %s. Expected format: levelId or levelId.version", levelSpec)
+		}
+	}
+
+	if len(levelsJSON) == 0 {
+		return nil, fmt.Errorf("No valid level specifications found")
+	}
+
+	return levelsJSON, nil
+}
+
 // submitScoreHandler handles POST /score/submit requests
 // Uses a stored procedure for atomic solution and score insertion
 func submitScoreHandler(db *sql.DB) http.HandlerFunc {
@@ -207,56 +287,9 @@ func bestScoresHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Parse levels parameter and build JSON array
-		levelSpecs := strings.Split(levelsParam, ",")
-		var levelsJSON []map[string]any
-
-		for _, levelSpec := range levelSpecs {
-			levelSpec = strings.TrimSpace(levelSpec)
-			if levelSpec == "" {
-				continue
-			}
-
-			parts := strings.Split(levelSpec, ".")
-			if len(parts) == 1 {
-				// No version specified, use -1 to indicate latest version
-				levelID := strings.TrimSpace(parts[0])
-				if levelID == "" {
-					http.Error(w, fmt.Sprintf("Invalid level format: %s. Level ID cannot be empty", levelSpec), http.StatusBadRequest)
-					return
-				}
-				levelsJSON = append(levelsJSON, map[string]interface{}{
-					"level_id":      levelID,
-					"level_version": -1,
-				})
-			} else if len(parts) == 2 {
-				// Version specified
-				levelID := strings.TrimSpace(parts[0])
-				levelVersionStr := strings.TrimSpace(parts[1])
-
-				if levelID == "" || levelVersionStr == "" {
-					http.Error(w, fmt.Sprintf("Invalid level format: %s. Both level ID and version are required when version is specified", levelSpec), http.StatusBadRequest)
-					return
-				}
-
-				// Parse version as integer
-				levelVersion := 0
-				if _, err := fmt.Sscanf(levelVersionStr, "%d", &levelVersion); err != nil {
-					http.Error(w, fmt.Sprintf("Invalid level version: %s. Version must be a number", levelVersionStr), http.StatusBadRequest)
-					return
-				}
-
-				levelsJSON = append(levelsJSON, map[string]any{
-					"level_id":      levelID,
-					"level_version": levelVersion,
-				})
-			} else {
-				http.Error(w, fmt.Sprintf("Invalid level format: %s. Expected format: levelId or levelId.version", levelSpec), http.StatusBadRequest)
-				return
-			}
-		}
-
-		if len(levelsJSON) == 0 {
-			http.Error(w, "No valid level specifications found", http.StatusBadRequest)
+		levelsJSON, err := parseLevelsParameter(levelsParam)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
@@ -321,6 +354,164 @@ func bestScoresHandler(db *sql.DB) http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			log.Printf("Failed to encode best scores response: %v", err)
+		}
+	}
+}
+
+// leaderboardHandler handles GET /score/leaderboard requests
+// Returns paginated leaderboard scores for specified levels within the given scope
+func leaderboardHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Get authenticated user ID from context (set by authMiddleware)
+		userID, ok := GetUserID(r)
+		if !ok {
+			log.Printf("User ID not found in request context")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		// Parse query parameters
+		levelsParam := r.URL.Query().Get("levels")
+		scope := r.URL.Query().Get("scope")
+		offsetParam := r.URL.Query().Get("offset")
+		sizeParam := r.URL.Query().Get("size")
+
+		// Validate levels parameter
+		if levelsParam == "" {
+			http.Error(w, "Levels parameter is required", http.StatusBadRequest)
+			return
+		}
+
+		// Default scope to global if not specified
+		if scope == "" {
+			scope = "global"
+		}
+
+		// Validate scope
+		validScopes := map[string]bool{
+			"personal": true,
+			"friends":  true,
+			"regional": true,
+			"global":   true,
+		}
+		if !validScopes[scope] {
+			http.Error(w, "Invalid scope. Must be: personal, friends, regional, or global", http.StatusBadRequest)
+			return
+		}
+
+		// Parse pagination parameters
+		offset := 0
+		if offsetParam != "" {
+			if _, err := fmt.Sscanf(offsetParam, "%d", &offset); err != nil || offset < 0 {
+				http.Error(w, "Invalid offset parameter. Must be a non-negative integer", http.StatusBadRequest)
+				return
+			}
+		}
+
+		size := 20 // Default page size
+		if sizeParam != "" {
+			if _, err := fmt.Sscanf(sizeParam, "%d", &size); err != nil || size <= 0 || size > 100 {
+				http.Error(w, "Invalid size parameter. Must be between 1 and 100", http.StatusBadRequest)
+				return
+			}
+		}
+
+		// Parse levels parameter and build JSON array
+		levelsJSON, err := parseLevelsParameter(levelsParam)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Convert levels to JSON
+		levelsJSONBytes, err := json.Marshal(levelsJSON)
+		if err != nil {
+			log.Printf("Failed to marshal levels to JSON: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		// Call stored procedure to get leaderboard scores
+		// First get total count for pagination
+		var totalCount int
+		err = db.QueryRow(`
+			SELECT get_leaderboard_count($1, $2, $3)
+		`, userID, string(levelsJSONBytes), scope).Scan(&totalCount)
+
+		if err != nil {
+			log.Printf("Failed to get leaderboard count: %v", err)
+			// If stored procedure doesn't exist yet, return a helpful error
+			if strings.Contains(err.Error(), "does not exist") {
+				http.Error(w, "Leaderboard functionality not yet implemented in database", http.StatusNotImplemented)
+				return
+			}
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		// Get paginated results
+		rows, err := db.Query(`
+			SELECT * FROM get_leaderboard($1, $2, $3, $4, $5)
+		`, userID, string(levelsJSONBytes), scope, offset, size)
+
+		if err != nil {
+			log.Printf("Failed to get leaderboard: %v", err)
+			// Check for specific error messages from stored procedure
+			if strings.Contains(err.Error(), "not yet implemented") {
+				http.Error(w, err.Error(), http.StatusNotImplemented)
+				return
+			}
+			if strings.Contains(err.Error(), "does not exist") {
+				http.Error(w, "Leaderboard functionality not yet implemented in database", http.StatusNotImplemented)
+				return
+			}
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var scores []LeaderboardEntry
+		for rows.Next() {
+			var entry LeaderboardEntry
+			err := rows.Scan(
+				&entry.Rank,
+				&entry.LevelID,
+				&entry.LevelVersion,
+				&entry.ScoreType,
+				&entry.BestScore,
+				&entry.UserID,
+				&entry.DisplayName,
+				&entry.FriendCode,
+			)
+			if err != nil {
+				log.Printf("Failed to scan leaderboard row: %v", err)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				return
+			}
+			scores = append(scores, entry)
+		}
+
+		if err = rows.Err(); err != nil {
+			log.Printf("Error iterating over leaderboard rows: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		response := LeaderboardResponse{
+			Scores: scores,
+			Count:  len(scores),
+			Scope:  scope,
+			Pagination: PaginationInfo{
+				Offset: offset,
+				Size:   size,
+				Total:  totalCount,
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("Failed to encode leaderboard response: %v", err)
 		}
 	}
 }

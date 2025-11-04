@@ -187,3 +187,30 @@ func TestAPIKeyGeneration(t *testing.T) {
 		t.Error("API key seems too short")
 	}
 }
+
+func TestLeaderboardRouteRegistered(t *testing.T) {
+	// Test that the leaderboard route is properly registered
+	// We'll use a nil DB for this test since we're just checking route registration
+	mux := setupRoutes(nil)
+	
+	// Create a test request to the leaderboard endpoint
+	req, err := http.NewRequest("GET", "/score/leaderboard?levels=test&scope=global", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	
+	// Create a ResponseRecorder to record the response
+	rr := httptest.NewRecorder()
+	
+	// Call the handler
+	mux.ServeHTTP(rr, req)
+	
+	// The endpoint should be registered (even if it returns an error due to no auth/DB)
+	// A 404 would indicate the route is not registered
+	if rr.Code == http.StatusNotFound {
+		t.Error("Leaderboard route is not registered - got 404")
+	}
+	
+	// We expect some other status (like 401 Unauthorized due to missing auth)
+	// This confirms the route exists and the handler is being called
+}

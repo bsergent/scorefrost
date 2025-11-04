@@ -346,3 +346,117 @@ func TestIntegrationLatestVersionDetection(t *testing.T) {
 
 	assertIntegrationScoreExists(t, response.Scores, "test_level_v", "time_ms", 25000)
 }
+
+func TestIntegrationLeaderboard(t *testing.T) {
+	db := mustConnectToIntegrationDB()
+	defer db.Close()
+
+	server := httptest.NewServer(setupTestRoutes(db))
+	defer server.Close()
+
+	// Submit multiple scores to create a leaderboard
+	solution := "SGVsbG8gV29ybGQ=" // "Hello World" in base64
+	solutionHash := calculateIntegrationSolutionHash(solution)
+
+	// User 1: Good score
+	request1 := IntegrationScoreSubmissionRequest{
+		Solution:     solution,
+		SolutionHash: solutionHash,
+		LevelID:      "leaderboard_test",
+		LevelVersion: 1,
+		GameVersion:  "1.0.0",
+		Scores: map[string]int{
+			"time_ms": 20000,
+		},
+	}
+
+	// User 2: Better score
+	request2 := IntegrationScoreSubmissionRequest{
+		Solution:     solution,
+		SolutionHash: solutionHash,
+		LevelID:      "leaderboard_test",
+		LevelVersion: 1,
+		GameVersion:  "1.0.0",
+		Scores: map[string]int{
+			"time_ms": 15000,
+		},
+	}
+
+	_, err := submitIntegrationScore(server, integrationConfig.TestAPIKey, request1)
+	if err != nil {
+		t.Fatalf("Failed to submit score for user 1: %v", err)
+	}
+
+	_, err = submitIntegrationScore(server, integrationConfig.TestAPIKey2, request2)
+	if err != nil {
+		t.Fatalf("Failed to submit score for user 2: %v", err)
+	}
+
+	// Test global leaderboard with pagination
+	response, err := getIntegrationLeaderboard(server, integrationConfig.TestAPIKey, []string{"leaderboard_test.1"}, "global", 0, 10)
+	if err != nil {
+		t.Fatalf("Failed to get leaderboard: %v", err)
+	}
+
+	// Verify response structure
+	if response.Scope != "global" {
+		t.Errorf("Expected scope 'global', got '%s'", response.Scope)
+	}
+
+	if response.Pagination.Offset != 0 {
+		t.Errorf("Expected offset 0, got %d", response.Pagination.Offset)
+	}
+
+	if response.Pagination.Size != 10 {
+		t.Errorf("Expected size 10, got %d", response.Pagination.Size)
+	}
+
+	if response.Count != len(response.Scores) {
+		t.Errorf("Count mismatch: expected %d, got %d", len(response.Scores), response.Count)
+	}
+
+	// Verify ranking: User 2 should be rank 1 (better time), User 1 should be rank 2
+	for _, score := range response.Scores {
+		if score.UserID == integrationConfig.TestUserID2 && score.Rank != 1 {
+			t.Errorf("User 2 should be rank 1 (best score), got rank %d", score.Rank)
+		}
+		if score.UserID == integrationConfig.TestUserID && score.Rank != 2 {
+			t.Errorf("User 1 should be rank 2, got rank %d", score.Rank)
+		}
+	}
+
+	// Test personal leaderboard
+	personalResponse, err := getIntegrationLeaderboard(server, integrationConfig.TestAPIKey, []string{"leaderboard_test.1"}, "personal", 0, 10)
+	if err != nil {
+		t.Fatalf("Failed to get personal leaderboard: %v", err)
+	}
+
+	if personalResponse.Scope != "personal" {
+		t.Errorf("Expected scope 'personal', got '%s'", personalResponse.Scope)
+	}
+
+	// Personal leaderboard should only contain scores for the authenticated user
+	for _, score := range personalResponse.Scores {
+		if score.UserID != integrationConfig.TestUserID {
+			t.Errorf("Personal leaderboard should only contain scores for user %s, found %s", integrationConfig.TestUserID, score.UserID)
+		}
+	}
+
+	// Test pagination
+	paginatedResponse, err := getIntegrationLeaderboard(server, integrationConfig.TestAPIKey, []string{"leaderboard_test.1"}, "global", 1, 1)
+	if err != nil {
+		t.Fatalf("Failed to get paginated leaderboard: %v", err)
+	}
+
+	if paginatedResponse.Pagination.Offset != 1 {
+		t.Errorf("Expected offset 1, got %d", paginatedResponse.Pagination.Offset)
+	}
+
+	if paginatedResponse.Pagination.Size != 1 {
+		t.Errorf("Expected size 1, got %d", paginatedResponse.Pagination.Size)
+	}
+
+	if len(paginatedResponse.Scores) > 1 {
+		t.Errorf("Expected at most 1 score with size=1, got %d", len(paginatedResponse.Scores))
+	}
+}

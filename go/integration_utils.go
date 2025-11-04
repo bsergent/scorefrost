@@ -229,6 +229,30 @@ type IntegrationBestScoresResponse struct {
 	Scope  string                      `json:"scope"`
 }
 
+type IntegrationLeaderboardEntry struct {
+	Rank         int    `json:"rank"`
+	LevelID      string `json:"level_id"`
+	LevelVersion int    `json:"level_version"`
+	ScoreType    string `json:"score_type"`
+	BestScore    int    `json:"best_score"`
+	UserID       string `json:"user_id"`
+	DisplayName  string `json:"display_name"`
+	FriendCode   string `json:"friend_code"`
+}
+
+type IntegrationPaginationInfo struct {
+	Offset int `json:"offset"`
+	Size   int `json:"size"`
+	Total  int `json:"total"`
+}
+
+type IntegrationLeaderboardResponse struct {
+	Scores     []IntegrationLeaderboardEntry `json:"scores"`
+	Count      int                           `json:"count"`
+	Scope      string                        `json:"scope"`
+	Pagination IntegrationPaginationInfo     `json:"pagination"`
+}
+
 func submitIntegrationScore(server *httptest.Server, apiKey string, request IntegrationScoreSubmissionRequest) (*IntegrationScoreSubmissionResponse, error) {
 	var response IntegrationScoreSubmissionResponse
 	err := makeAuthenticatedIntegrationRequest(server, "POST", "/score/submit", apiKey, request, &response)
@@ -246,6 +270,23 @@ func getIntegrationBestScores(server *httptest.Server, apiKey string, levels []s
 	path := "/score/best?" + params.Encode()
 
 	var response IntegrationBestScoresResponse
+	err := makeAuthenticatedIntegrationRequest(server, "GET", path, apiKey, nil, &response)
+	return &response, err
+}
+
+func getIntegrationLeaderboard(server *httptest.Server, apiKey string, levels []string, scope string, offset int, size int) (*IntegrationLeaderboardResponse, error) {
+	// Build query parameters
+	params := url.Values{}
+	params.Set("levels", strings.Join(levels, ","))
+	if scope != "" {
+		params.Set("scope", scope)
+	}
+	params.Set("offset", fmt.Sprintf("%d", offset))
+	params.Set("size", fmt.Sprintf("%d", size))
+
+	path := "/score/leaderboard?" + params.Encode()
+
+	var response IntegrationLeaderboardResponse
 	err := makeAuthenticatedIntegrationRequest(server, "GET", path, apiKey, nil, &response)
 	return &response, err
 }

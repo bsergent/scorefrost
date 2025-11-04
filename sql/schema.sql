@@ -388,3 +388,238 @@ BEGIN
     RETURN QUERY EXECUTE v_sql;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Function to get leaderboard count for pagination
+-- Returns total count of scores matching the criteria
+CREATE OR REPLACE FUNCTION get_leaderboard_count(
+    p_user_id UUID,
+    p_levels JSON,
+    p_scope VARCHAR(16)
+)
+RETURNS INTEGER AS $$
+DECLARE
+    v_level_json JSON;
+    v_where_conditions TEXT[] := '{}';
+    v_final_where TEXT;
+    v_sql TEXT;
+    v_count INTEGER;
+BEGIN
+    -- Build WHERE conditions for each level specification
+    FOR v_level_json IN SELECT * FROM json_array_elements(p_levels)
+    LOOP
+        IF (v_level_json->>'level_version')::INTEGER = -1 THEN
+            -- Latest version: find max version for this level
+            v_where_conditions := array_append(v_where_conditions, format(
+                '(s.level_id = %L AND s.level_version = (SELECT MAX(level_version) FROM solution WHERE level_id = %L))',
+                v_level_json->>'level_id', v_level_json->>'level_id'
+            ));
+        ELSE
+            -- Specific version
+            v_where_conditions := array_append(v_where_conditions, format(
+                '(s.level_id = %L AND s.level_version = %s)',
+                v_level_json->>'level_id', v_level_json->>'level_version'
+            ));
+        END IF;
+    END LOOP;
+
+    -- Combine WHERE conditions
+    v_final_where := array_to_string(v_where_conditions, ' OR ');
+
+    -- Build query based on scope
+    CASE p_scope
+        WHEN 'personal' THEN
+            v_sql := format('
+                SELECT COUNT(DISTINCT (s.level_id, s.level_version, sc.type_id))
+                FROM solution s
+                JOIN score sc ON s.id = sc.solution_id
+                JOIN score_type st ON sc.type_id = st.id
+                WHERE s.user_id = %L AND (%s)
+            ', p_user_id, v_final_where);
+            
+        WHEN 'global' THEN
+            v_sql := format('
+                WITH best_scores_cte AS (
+                    SELECT 
+                        s.level_id,
+                        s.level_version,
+                        sc.type_id,
+                        CASE 
+                            WHEN st.higher_is_better THEN MAX(sc.score)
+                            ELSE MIN(sc.score)
+                        END as best_score_value
+                    FROM solution s
+                    JOIN score sc ON s.id = sc.solution_id
+                    JOIN score_type st ON sc.type_id = st.id
+                    WHERE (%s)
+                    GROUP BY s.level_id, s.level_version, sc.type_id, st.higher_is_better
+                )
+                SELECT COUNT(*)
+                FROM (
+                    SELECT DISTINCT
+                        s.level_id,
+                        s.level_version,
+                        sc.type_id
+                    FROM solution s
+                    JOIN score sc ON s.id = sc.solution_id
+                    JOIN score_type st ON sc.type_id = st.id
+                    JOIN best_scores_cte bsc ON (
+                        s.level_id = bsc.level_id 
+                        AND s.level_version = bsc.level_version 
+                        AND sc.type_id = bsc.type_id 
+                        AND sc.score = bsc.best_score_value
+                    )
+                    WHERE (%s)
+                ) t
+            ', v_final_where, v_final_where);
+            
+        WHEN 'friends' THEN
+            RAISE EXCEPTION 'Friends scope not yet implemented';
+            
+        WHEN 'regional' THEN
+            RAISE EXCEPTION 'Regional scope not yet implemented';
+            
+        ELSE
+            RAISE EXCEPTION 'Invalid scope: %', p_scope;
+    END CASE;
+    
+    -- Execute the query and return count
+    EXECUTE v_sql INTO v_count;
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to get paginated leaderboard scores
+-- Returns ranked scores with pagination support
+CREATE OR REPLACE FUNCTION get_leaderboard(
+    p_user_id UUID,
+    p_levels JSON,
+    p_scope VARCHAR(16),
+    p_offset INTEGER,
+    p_size INTEGER
+)
+RETURNS TABLE(
+    rank INTEGER,
+    level_id VARCHAR(16),
+    level_version INTEGER,
+    score_type VARCHAR(16),
+    best_score INTEGER,
+    user_id UUID,
+    display_name VARCHAR(64),
+    friend_code VARCHAR(9)
+) AS $$
+DECLARE
+    v_level_json JSON;
+    v_where_conditions TEXT[] := '{}';
+    v_final_where TEXT;
+    v_sql TEXT;
+BEGIN
+    -- Build WHERE conditions for each level specification
+    FOR v_level_json IN SELECT * FROM json_array_elements(p_levels)
+    LOOP
+        IF (v_level_json->>'level_version')::INTEGER = -1 THEN
+            -- Latest version: find max version for this level
+            v_where_conditions := array_append(v_where_conditions, format(
+                '(s.level_id = %L AND s.level_version = (SELECT MAX(level_version) FROM solution WHERE level_id = %L))',
+                v_level_json->>'level_id', v_level_json->>'level_id'
+            ));
+        ELSE
+            -- Specific version
+            v_where_conditions := array_append(v_where_conditions, format(
+                '(s.level_id = %L AND s.level_version = %s)',
+                v_level_json->>'level_id', v_level_json->>'level_version'
+            ));
+        END IF;
+    END LOOP;
+
+    -- Combine WHERE conditions
+    v_final_where := array_to_string(v_where_conditions, ' OR ');
+
+    -- Build query based on scope
+    CASE p_scope
+        WHEN 'personal' THEN
+            v_sql := format('
+                SELECT 
+                    ROW_NUMBER() OVER (
+                        ORDER BY s.level_id, s.level_version, sc.type_id, 
+                        CASE WHEN st.higher_is_better THEN sc.score END DESC,
+                        CASE WHEN NOT st.higher_is_better THEN sc.score END ASC
+                    )::INTEGER as rank,
+                    s.level_id,
+                    s.level_version,
+                    sc.type_id as score_type,
+                    sc.score as best_score,
+                    u.id as user_id,
+                    COALESCE(u.display_name, '''') as display_name,
+                    u.friend_code
+                FROM solution s
+                JOIN score sc ON s.id = sc.solution_id
+                JOIN score_type st ON sc.type_id = st.id
+                JOIN "user" u ON s.user_id = u.id
+                WHERE s.user_id = %L AND (%s)
+                ORDER BY rank
+                OFFSET %s LIMIT %s
+            ', p_user_id, v_final_where, p_offset, p_size);
+            
+        WHEN 'global' THEN
+            v_sql := format('
+                WITH best_scores_cte AS (
+                    SELECT 
+                        s.level_id,
+                        s.level_version,
+                        sc.type_id,
+                        CASE 
+                            WHEN st.higher_is_better THEN MAX(sc.score)
+                            ELSE MIN(sc.score)
+                        END as best_score_value
+                    FROM solution s
+                    JOIN score sc ON s.id = sc.solution_id
+                    JOIN score_type st ON sc.type_id = st.id
+                    WHERE (%s)
+                    GROUP BY s.level_id, s.level_version, sc.type_id, st.higher_is_better
+                ),
+                ranked_scores AS (
+                    SELECT 
+                        ROW_NUMBER() OVER (
+                            ORDER BY s.level_id, s.level_version, sc.type_id,
+                            CASE WHEN st.higher_is_better THEN sc.score END DESC,
+                            CASE WHEN NOT st.higher_is_better THEN sc.score END ASC,
+                            s.date_time_utc ASC
+                        )::INTEGER as rank,
+                        s.level_id,
+                        s.level_version,
+                        sc.type_id as score_type,
+                        sc.score as best_score,
+                        u.id as user_id,
+                        COALESCE(u.display_name, '''') as display_name,
+                        u.friend_code
+                    FROM solution s
+                    JOIN score sc ON s.id = sc.solution_id
+                    JOIN score_type st ON sc.type_id = st.id
+                    JOIN "user" u ON s.user_id = u.id
+                    JOIN best_scores_cte bsc ON (
+                        s.level_id = bsc.level_id 
+                        AND s.level_version = bsc.level_version 
+                        AND sc.type_id = bsc.type_id 
+                        AND sc.score = bsc.best_score_value
+                    )
+                    WHERE (%s)
+                )
+                SELECT * FROM ranked_scores
+                ORDER BY rank
+                OFFSET %s LIMIT %s
+            ', v_final_where, v_final_where, p_offset, p_size);
+            
+        WHEN 'friends' THEN
+            RAISE EXCEPTION 'Friends scope not yet implemented';
+            
+        WHEN 'regional' THEN
+            RAISE EXCEPTION 'Regional scope not yet implemented';
+            
+        ELSE
+            RAISE EXCEPTION 'Invalid scope: %', p_scope;
+    END CASE;
+    
+    -- Execute the dynamic query
+    RETURN QUERY EXECUTE v_sql;
+END;
+$$ LANGUAGE plpgsql;

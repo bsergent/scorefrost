@@ -1,0 +1,39 @@
+### GET Leaderboard - Basic Global Leaderboard
+GET {{host}}/score/leaderboard?levels=level1,level2.3&scope=global&offset=0&size=10
+Authorization: Bearer {{dev_api_key}}
+
+### GET Leaderboard - Personal Leaderboard with Pagination
+GET {{host}}/score/leaderboard?levels=level1.1,level2.2&scope=personal&offset=10&size=5
+Authorization: Bearer {{dev_api_key}}
+
+### GET Leaderboard - Regional Leaderboard
+GET {{host}}/score/leaderboard?levels=puzzle_easy,puzzle_hard.5&scope=regional&offset=0&size=20
+Authorization: Bearer {{dev_api_key}}
+
+### GET Leaderboard - Friends Leaderboard (Large page)
+GET {{host}}/score/leaderboard?levels=speed_run.1,endurance.2&scope=friends&offset=0&size=50
+Authorization: Bearer {{dev_api_key}}
+
+### GET Leaderboard - Multiple levels with mixed versions
+GET {{host}}/score/leaderboard?levels=level_a,level_b.1,level_c.3,level_d&scope=global&offset=20&size=25
+Authorization: Bearer {{dev_api_key}}
+
+### GET Leaderboard - Default pagination (no offset/size)
+GET {{host}}/score/leaderboard?levels=level_001.1,level_002.1&scope=global
+Authorization: Bearer {{dev_api_key}}
+
+### GET Leaderboard - Large page size (max allowed)
+GET {{host}}/score/leaderboard?levels=level_001&scope=global&offset=0&size=100
+Authorization: Bearer {{dev_api_key}}
+
+### GET Leaderboard - Missing levels parameter (should error)
+GET {{host}}/score/leaderboard?scope=global&offset=0&size=10
+Authorization: Bearer {{dev_api_key}}
+
+### GET Leaderboard - Invalid scope (should error)
+GET {{host}}/score/leaderboard?levels=level_001&scope=invalid&offset=0&size=10
+Authorization: Bearer {{dev_api_key}}
+
+### Variables
+@host = http://localhost:8080
+@dev_api_key = dev_key_change_in_production
