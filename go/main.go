@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -47,8 +50,38 @@ func main() {
 	// Wrap mux with rate limiting middleware
 	handler := RateLimitMiddleware(rateLimiter, mux)
 
-	log.Printf("Starting server on :%s", apiPort)
-	log.Fatal(http.ListenAndServe(":"+apiPort, handler))
+	// Create HTTP server
+	server := &http.Server{
+		Addr:    ":" + apiPort,
+		Handler: handler,
+	}
+
+	// Channel to listen for interrupt signal
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	// Start server in a goroutine
+	go func() {
+		log.Printf("Starting server on :%s", apiPort)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed to start: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal
+	<-stop
+	log.Println("Shutting down server...")
+
+	// Create a context with timeout for graceful shutdown
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Attempt graceful shutdown
+	if err := server.Shutdown(ctx); err != nil {
+		log.Printf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server gracefully stopped")
 }
 
 func connectToDB() (*sql.DB, error) {
@@ -95,5 +128,3 @@ func health(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, `{"status":"ok","time":"%s"}`, time.Now().UTC().Format(time.RFC3339))
 }
-
-// TODO Gracefully clean shut down the server on SIGINT/SIGTERM
