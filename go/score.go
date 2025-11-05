@@ -90,7 +90,7 @@ func parseLevelsParameter(levelsParam string) ([]map[string]any, error) {
 			// No version specified, use -1 to indicate latest version
 			levelID := strings.TrimSpace(parts[0])
 			if levelID == "" {
-				return nil, fmt.Errorf("Invalid level format: %s. Level ID cannot be empty", levelSpec)
+				return nil, fmt.Errorf("invalid level format: %s. Level ID cannot be empty", levelSpec)
 			}
 			levelsJSON = append(levelsJSON, map[string]any{
 				"level_id":      levelID,
@@ -102,13 +102,13 @@ func parseLevelsParameter(levelsParam string) ([]map[string]any, error) {
 			levelVersionStr := strings.TrimSpace(parts[1])
 
 			if levelID == "" || levelVersionStr == "" {
-				return nil, fmt.Errorf("Invalid level format: %s. Both level ID and version are required when version is specified", levelSpec)
+				return nil, fmt.Errorf("invalid level format: %s. Both level ID and version are required when version is specified", levelSpec)
 			}
 
 			// Parse version as integer
 			levelVersion := 0
 			if _, err := fmt.Sscanf(levelVersionStr, "%d", &levelVersion); err != nil {
-				return nil, fmt.Errorf("Invalid level version: %s. Version must be a number", levelVersionStr)
+				return nil, fmt.Errorf("invalid level version: %s. Version must be a number", levelVersionStr)
 			}
 
 			levelsJSON = append(levelsJSON, map[string]any{
@@ -116,12 +116,12 @@ func parseLevelsParameter(levelsParam string) ([]map[string]any, error) {
 				"level_version": levelVersion,
 			})
 		} else {
-			return nil, fmt.Errorf("Invalid level format: %s. Expected format: levelId or levelId.version", levelSpec)
+			return nil, fmt.Errorf("invalid level format: %s. Expected format: levelId or levelId.version", levelSpec)
 		}
 	}
 
 	if len(levelsJSON) == 0 {
-		return nil, fmt.Errorf("No valid level specifications found")
+		return nil, fmt.Errorf("no valid level specifications found")
 	}
 
 	return levelsJSON, nil
@@ -373,6 +373,7 @@ func leaderboardHandler(db *sql.DB) http.HandlerFunc {
 		// Parse query parameters
 		levelsParam := r.URL.Query().Get("levels")
 		scope := r.URL.Query().Get("scope")
+		scoreTypeParam := r.URL.Query().Get("score_type")
 		offsetParam := r.URL.Query().Get("offset")
 		sizeParam := r.URL.Query().Get("size")
 
@@ -397,6 +398,17 @@ func leaderboardHandler(db *sql.DB) http.HandlerFunc {
 		if !validScopes[scope] {
 			http.Error(w, "Invalid scope. Must be: personal, friends, regional, or global", http.StatusBadRequest)
 			return
+		}
+
+		// Validate score_type parameter (optional)
+		// If not provided, returns all score types
+		if scoreTypeParam != "" {
+			// Basic validation - check it's not empty after trimming
+			scoreTypeParam = strings.TrimSpace(scoreTypeParam)
+			if scoreTypeParam == "" {
+				http.Error(w, "Score type cannot be empty", http.StatusBadRequest)
+				return
+			}
 		}
 
 		// Parse pagination parameters
@@ -435,8 +447,8 @@ func leaderboardHandler(db *sql.DB) http.HandlerFunc {
 		// First get total count for pagination
 		var totalCount int
 		err = db.QueryRow(`
-			SELECT get_leaderboard_count($1, $2, $3)
-		`, userID, string(levelsJSONBytes), scope).Scan(&totalCount)
+			SELECT get_leaderboard_count($1, $2, $3, $4)
+		`, userID, string(levelsJSONBytes), scope, scoreTypeParam).Scan(&totalCount)
 
 		if err != nil {
 			log.Printf("Failed to get leaderboard count: %v", err)
@@ -451,8 +463,8 @@ func leaderboardHandler(db *sql.DB) http.HandlerFunc {
 
 		// Get paginated results
 		rows, err := db.Query(`
-			SELECT * FROM get_leaderboard($1, $2, $3, $4, $5)
-		`, userID, string(levelsJSONBytes), scope, offset, size)
+			SELECT * FROM get_leaderboard($1, $2, $3, $4, $5, $6)
+		`, userID, string(levelsJSONBytes), scope, scoreTypeParam, offset, size)
 
 		if err != nil {
 			log.Printf("Failed to get leaderboard: %v", err)

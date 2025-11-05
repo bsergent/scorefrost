@@ -394,7 +394,8 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION get_leaderboard_count(
     p_user_id UUID,
     p_levels JSON,
-    p_scope VARCHAR(16)
+    p_scope VARCHAR(16),
+    p_score_type VARCHAR(16)
 )
 RETURNS INTEGER AS $$
 DECLARE
@@ -424,6 +425,11 @@ BEGIN
 
     -- Combine WHERE conditions
     v_final_where := array_to_string(v_where_conditions, ' OR ');
+    
+    -- Add score type filter if provided
+    IF p_score_type IS NOT NULL AND p_score_type != '' THEN
+        v_final_where := v_final_where || format(' AND sc.type_id = %L', p_score_type);
+    END IF;
 
     -- Build query based on scope
     CASE p_scope
@@ -438,8 +444,9 @@ BEGIN
             
         WHEN 'global' THEN
             v_sql := format('
-                WITH best_scores_cte AS (
+                WITH user_best_scores AS (
                     SELECT 
+                        s.user_id,
                         s.level_id,
                         s.level_version,
                         sc.type_id,
@@ -451,26 +458,11 @@ BEGIN
                     JOIN score sc ON s.id = sc.solution_id
                     JOIN score_type st ON sc.type_id = st.id
                     WHERE (%s)
-                    GROUP BY s.level_id, s.level_version, sc.type_id, st.higher_is_better
+                    GROUP BY s.user_id, s.level_id, s.level_version, sc.type_id, st.higher_is_better
                 )
                 SELECT COUNT(*)
-                FROM (
-                    SELECT DISTINCT
-                        s.level_id,
-                        s.level_version,
-                        sc.type_id
-                    FROM solution s
-                    JOIN score sc ON s.id = sc.solution_id
-                    JOIN score_type st ON sc.type_id = st.id
-                    JOIN best_scores_cte bsc ON (
-                        s.level_id = bsc.level_id 
-                        AND s.level_version = bsc.level_version 
-                        AND sc.type_id = bsc.type_id 
-                        AND sc.score = bsc.best_score_value
-                    )
-                    WHERE (%s)
-                ) t
-            ', v_final_where, v_final_where);
+                FROM user_best_scores
+            ', v_final_where);
             
         WHEN 'friends' THEN
             RAISE EXCEPTION 'Friends scope not yet implemented';
@@ -494,6 +486,7 @@ CREATE OR REPLACE FUNCTION get_leaderboard(
     p_user_id UUID,
     p_levels JSON,
     p_scope VARCHAR(16),
+    p_score_type VARCHAR(16),
     p_offset INTEGER,
     p_size INTEGER
 )
@@ -533,6 +526,11 @@ BEGIN
 
     -- Combine WHERE conditions
     v_final_where := array_to_string(v_where_conditions, ' OR ');
+    
+    -- Add score type filter if provided
+    IF p_score_type IS NOT NULL AND p_score_type != '' THEN
+        v_final_where := v_final_where || format(' AND sc.type_id = %L', p_score_type);
+    END IF;
 
     -- Build query based on scope
     CASE p_scope
@@ -542,7 +540,8 @@ BEGIN
                     ROW_NUMBER() OVER (
                         ORDER BY s.level_id, s.level_version, sc.type_id, 
                         CASE WHEN st.higher_is_better THEN sc.score END DESC,
-                        CASE WHEN NOT st.higher_is_better THEN sc.score END ASC
+                        CASE WHEN NOT st.higher_is_better THEN sc.score END ASC,
+                        s.date_time_utc ASC
                     )::INTEGER as rank,
                     s.level_id,
                     s.level_version,
@@ -562,52 +561,62 @@ BEGIN
             
         WHEN 'global' THEN
             v_sql := format('
-                WITH best_scores_cte AS (
+                WITH user_best_scores AS (
                     SELECT 
+                        s.user_id,
                         s.level_id,
                         s.level_version,
                         sc.type_id,
                         CASE 
                             WHEN st.higher_is_better THEN MAX(sc.score)
                             ELSE MIN(sc.score)
-                        END as best_score_value
+                        END as best_score_value,
+                        MIN(s.date_time_utc) as earliest_date -- Tiebreaker for same scores
                     FROM solution s
                     JOIN score sc ON s.id = sc.solution_id
                     JOIN score_type st ON sc.type_id = st.id
                     WHERE (%s)
-                    GROUP BY s.level_id, s.level_version, sc.type_id, st.higher_is_better
+                    GROUP BY s.user_id, s.level_id, s.level_version, sc.type_id, st.higher_is_better
                 ),
                 ranked_scores AS (
                     SELECT 
                         ROW_NUMBER() OVER (
-                            ORDER BY s.level_id, s.level_version, sc.type_id,
-                            CASE WHEN st.higher_is_better THEN sc.score END DESC,
-                            CASE WHEN NOT st.higher_is_better THEN sc.score END ASC,
-                            s.date_time_utc ASC
-                        )::INTEGER as rank,
-                        s.level_id,
-                        s.level_version,
-                        sc.type_id as score_type,
-                        sc.score as best_score,
-                        u.id as user_id,
+                            PARTITION BY ubs.level_id, ubs.level_version, ubs.type_id
+                            ORDER BY 
+                                CASE WHEN st.higher_is_better THEN ubs.best_score_value END DESC,
+                                CASE WHEN NOT st.higher_is_better THEN ubs.best_score_value END ASC,
+                                ubs.earliest_date ASC
+                        )::INTEGER as level_rank,
+                        ROW_NUMBER() OVER (
+                            ORDER BY ubs.level_id, ubs.level_version, ubs.type_id,
+                                CASE WHEN st.higher_is_better THEN ubs.best_score_value END DESC,
+                                CASE WHEN NOT st.higher_is_better THEN ubs.best_score_value END ASC,
+                                ubs.earliest_date ASC
+                        )::INTEGER as global_rank,
+                        ubs.level_id,
+                        ubs.level_version,
+                        ubs.type_id as score_type,
+                        ubs.best_score_value as best_score,
+                        ubs.user_id,
                         COALESCE(u.display_name, '''') as display_name,
                         u.friend_code
-                    FROM solution s
-                    JOIN score sc ON s.id = sc.solution_id
-                    JOIN score_type st ON sc.type_id = st.id
-                    JOIN "user" u ON s.user_id = u.id
-                    JOIN best_scores_cte bsc ON (
-                        s.level_id = bsc.level_id 
-                        AND s.level_version = bsc.level_version 
-                        AND sc.type_id = bsc.type_id 
-                        AND sc.score = bsc.best_score_value
-                    )
-                    WHERE (%s)
+                    FROM user_best_scores ubs
+                    JOIN score_type st ON ubs.type_id = st.id
+                    JOIN "user" u ON ubs.user_id = u.id
                 )
-                SELECT * FROM ranked_scores
-                ORDER BY rank
+                SELECT 
+                    global_rank as rank,
+                    level_id,
+                    level_version,
+                    score_type,
+                    best_score,
+                    user_id,
+                    display_name,
+                    friend_code
+                FROM ranked_scores
+                ORDER BY global_rank
                 OFFSET %s LIMIT %s
-            ', v_final_where, v_final_where, p_offset, p_size);
+            ', v_final_where, p_offset, p_size);
             
         WHEN 'friends' THEN
             RAISE EXCEPTION 'Friends scope not yet implemented';

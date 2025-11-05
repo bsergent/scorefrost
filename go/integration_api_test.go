@@ -393,7 +393,7 @@ func TestIntegrationLeaderboard(t *testing.T) {
 	}
 
 	// Test global leaderboard with pagination
-	response, err := getIntegrationLeaderboard(server, integrationConfig.TestAPIKey, []string{"leaderboard_test.1"}, "global", 0, 10)
+	response, err := getIntegrationLeaderboard(server, integrationConfig.TestAPIKey, []string{"leaderboard_test.1"}, "global", "", 0, 10)
 	if err != nil {
 		t.Fatalf("Failed to get leaderboard: %v", err)
 	}
@@ -426,7 +426,7 @@ func TestIntegrationLeaderboard(t *testing.T) {
 	}
 
 	// Test personal leaderboard
-	personalResponse, err := getIntegrationLeaderboard(server, integrationConfig.TestAPIKey, []string{"leaderboard_test.1"}, "personal", 0, 10)
+	personalResponse, err := getIntegrationLeaderboard(server, integrationConfig.TestAPIKey, []string{"leaderboard_test.1"}, "personal", "", 0, 10)
 	if err != nil {
 		t.Fatalf("Failed to get personal leaderboard: %v", err)
 	}
@@ -443,7 +443,7 @@ func TestIntegrationLeaderboard(t *testing.T) {
 	}
 
 	// Test pagination
-	paginatedResponse, err := getIntegrationLeaderboard(server, integrationConfig.TestAPIKey, []string{"leaderboard_test.1"}, "global", 1, 1)
+	paginatedResponse, err := getIntegrationLeaderboard(server, integrationConfig.TestAPIKey, []string{"leaderboard_test.1"}, "global", "", 1, 1)
 	if err != nil {
 		t.Fatalf("Failed to get paginated leaderboard: %v", err)
 	}
@@ -458,5 +458,149 @@ func TestIntegrationLeaderboard(t *testing.T) {
 
 	if len(paginatedResponse.Scores) > 1 {
 		t.Errorf("Expected at most 1 score with size=1, got %d", len(paginatedResponse.Scores))
+	}
+}
+
+func TestIntegrationLeaderboardScoreTypeFiltering(t *testing.T) {
+	db := mustConnectToIntegrationDB()
+	defer db.Close()
+
+	server := httptest.NewServer(setupTestRoutes(db))
+	defer server.Close()
+
+	solution := "dGVzdCBzb2x1dGlvbiBmb3Igc2NvcmUgdHlwZSBmaWx0ZXJpbmc=" // "test solution for score type filtering" in base64
+	solutionHash := calculateIntegrationSolutionHash(solution)
+
+	// Submit scores with multiple score types for user 1
+	request1 := IntegrationScoreSubmissionRequest{
+		Solution:     solution,
+		SolutionHash: solutionHash,
+		LevelID:      "score_type_test",
+		LevelVersion: 1,
+		GameVersion:  "1.0.0",
+		Scores: map[string]int{
+			"time_ms":  20000, // Better time than user 2 (lower is better)
+			"striping": 5,     // Worse striping than user 2 (higher is better)
+		},
+	}
+
+	// Submit scores with multiple score types for user 2
+	request2 := IntegrationScoreSubmissionRequest{
+		Solution:     solution,
+		SolutionHash: solutionHash,
+		LevelID:      "score_type_test",
+		LevelVersion: 1,
+		GameVersion:  "1.0.0",
+		Scores: map[string]int{
+			"time_ms":  25000, // Worse time than user 1 (lower is better)
+			"striping": 8,     // Better striping than user 1 (higher is better)
+		},
+	}
+
+	// Submit scores for both users
+	_, err := submitIntegrationScore(server, integrationConfig.TestAPIKey, request1)
+	if err != nil {
+		t.Fatalf("Failed to submit score for user 1: %v", err)
+	}
+
+	_, err = submitIntegrationScore(server, integrationConfig.TestAPIKey2, request2)
+	if err != nil {
+		t.Fatalf("Failed to submit score for user 2: %v", err)
+	}
+
+	// Test filtering by time_ms - should return only time scores
+	timeResponse, err := getIntegrationLeaderboard(server, integrationConfig.TestAPIKey, []string{"score_type_test.1"}, "global", "time_ms", 0, 10)
+	if err != nil {
+		t.Fatalf("Failed to get time_ms leaderboard: %v", err)
+	}
+
+	// Verify all returned scores are time_ms type
+	for _, score := range timeResponse.Scores {
+		if score.ScoreType != "time_ms" {
+			t.Errorf("Expected score_type 'time_ms', got '%s'", score.ScoreType)
+		}
+	}
+
+	// Verify ranking: User 1 should be rank 1 (better/lower time)
+	if len(timeResponse.Scores) >= 2 {
+		user1Found := false
+		user2Found := false
+		for _, score := range timeResponse.Scores {
+			if score.UserID == integrationConfig.TestUserID {
+				user1Found = true
+				if score.Rank != 1 {
+					t.Errorf("User 1 should be rank 1 for time_ms, got rank %d", score.Rank)
+				}
+			}
+			if score.UserID == integrationConfig.TestUserID2 {
+				user2Found = true
+				if score.Rank != 2 {
+					t.Errorf("User 2 should be rank 2 for time_ms, got rank %d", score.Rank)
+				}
+			}
+		}
+		if !user1Found || !user2Found {
+			t.Error("Both users should appear in time_ms leaderboard")
+		}
+	}
+
+	// Test filtering by striping - should return only striping scores
+	stripingResponse, err := getIntegrationLeaderboard(server, integrationConfig.TestAPIKey, []string{"score_type_test.1"}, "global", "striping", 0, 10)
+	if err != nil {
+		t.Fatalf("Failed to get striping leaderboard: %v", err)
+	}
+
+	// Verify all returned scores are striping type
+	for _, score := range stripingResponse.Scores {
+		if score.ScoreType != "striping" {
+			t.Errorf("Expected score_type 'striping', got '%s'", score.ScoreType)
+		}
+	}
+
+	// Verify ranking: User 2 should be rank 1 (higher striping is better)
+	if len(stripingResponse.Scores) >= 2 {
+		user1Found := false
+		user2Found := false
+		for _, score := range stripingResponse.Scores {
+			if score.UserID == integrationConfig.TestUserID2 {
+				user2Found = true
+				if score.Rank != 1 {
+					t.Errorf("User 2 should be rank 1 for striping, got rank %d", score.Rank)
+				}
+			}
+			if score.UserID == integrationConfig.TestUserID {
+				user1Found = true
+				if score.Rank != 2 {
+					t.Errorf("User 1 should be rank 2 for striping, got rank %d", score.Rank)
+				}
+			}
+		}
+		if !user1Found || !user2Found {
+			t.Error("Both users should appear in striping leaderboard")
+		}
+	}
+
+	// Test without score_type filter - should return all scores
+	allResponse, err := getIntegrationLeaderboard(server, integrationConfig.TestAPIKey, []string{"score_type_test.1"}, "global", "", 0, 10)
+	if err != nil {
+		t.Fatalf("Failed to get all scores leaderboard: %v", err)
+	}
+
+	// Should contain both time_ms and striping scores - one from each user showing their best
+	timeScoresFound := 0
+	stripingScoresFound := 0
+	for _, score := range allResponse.Scores {
+		if score.ScoreType == "time_ms" {
+			timeScoresFound++
+		} else if score.ScoreType == "striping" {
+			stripingScoresFound++
+		}
+	}
+
+	if timeScoresFound != 2 {
+		t.Errorf("Expected 2 time_ms scores (one per user), got %d", timeScoresFound)
+	}
+	if stripingScoresFound != 2 {
+		t.Errorf("Expected 2 striping scores (one per user), got %d", stripingScoresFound)
 	}
 }

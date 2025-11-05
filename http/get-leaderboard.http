@@ -1,21 +1,25 @@
-### GET Leaderboard - Basic Global Leaderboard
+### GET Leaderboard - Basic Global Leaderboard (All Score Types)
 GET {{host}}/score/leaderboard?levels=level1,level2.3&scope=global&offset=0&size=10
 Authorization: Bearer {{dev_api_key}}
 
-### GET Leaderboard - Personal Leaderboard with Pagination
-GET {{host}}/score/leaderboard?levels=level1.1,level2.2&scope=personal&offset=10&size=5
+### GET Leaderboard - Specific Score Type (Time Leaderboard)
+GET {{host}}/score/leaderboard?levels=level1.1,level2.2&scope=global&score_type=time_ms&offset=0&size=10
 Authorization: Bearer {{dev_api_key}}
 
-### GET Leaderboard - Regional Leaderboard
+### GET Leaderboard - Personal Leaderboard with Score Type
+GET {{host}}/score/leaderboard?levels=level1.1,level2.2&scope=personal&score_type=time_ms&offset=10&size=5
+Authorization: Bearer {{dev_api_key}}
+
+### GET Leaderboard - Regional Leaderboard (All Score Types)
 GET {{host}}/score/leaderboard?levels=puzzle_easy,puzzle_hard.5&scope=regional&offset=0&size=20
 Authorization: Bearer {{dev_api_key}}
 
-### GET Leaderboard - Friends Leaderboard (Large page)
-GET {{host}}/score/leaderboard?levels=speed_run.1,endurance.2&scope=friends&offset=0&size=50
+### GET Leaderboard - Friends Leaderboard for Specific Score Type
+GET {{host}}/score/leaderboard?levels=speed_run.1,endurance.2&scope=friends&score_type=stars&offset=0&size=50
 Authorization: Bearer {{dev_api_key}}
 
-### GET Leaderboard - Multiple levels with mixed versions
-GET {{host}}/score/leaderboard?levels=level_a,level_b.1,level_c.3,level_d&scope=global&offset=20&size=25
+### GET Leaderboard - Multiple levels with mixed versions (Specific Score Type)
+GET {{host}}/score/leaderboard?levels=level_a,level_b.1,level_c.3,level_d&scope=global&score_type=fuel&offset=20&size=25
 Authorization: Bearer {{dev_api_key}}
 
 ### GET Leaderboard - Default pagination (no offset/size)

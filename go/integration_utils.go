@@ -274,12 +274,15 @@ func getIntegrationBestScores(server *httptest.Server, apiKey string, levels []s
 	return &response, err
 }
 
-func getIntegrationLeaderboard(server *httptest.Server, apiKey string, levels []string, scope string, offset int, size int) (*IntegrationLeaderboardResponse, error) {
+func getIntegrationLeaderboard(server *httptest.Server, apiKey string, levels []string, scope string, scoreType string, offset int, size int) (*IntegrationLeaderboardResponse, error) {
 	// Build query parameters
 	params := url.Values{}
 	params.Set("levels", strings.Join(levels, ","))
 	if scope != "" {
 		params.Set("scope", scope)
+	}
+	if scoreType != "" {
+		params.Set("score_type", scoreType)
 	}
 	params.Set("offset", fmt.Sprintf("%d", offset))
 	params.Set("size", fmt.Sprintf("%d", size))
