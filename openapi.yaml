@@ -96,6 +96,32 @@ paths:
                   - status
                   - timestamp
 
+  /docs:
+    get:
+      summary: API Documentation
+      description: Redirects to the Swagger UI documentation interface
+      tags:
+        - System
+      security: []
+      responses:
+        '301':
+          description: Redirect to Swagger UI
+
+  /openapi.json:
+    get:
+      summary: OpenAPI Specification
+      description: Returns the OpenAPI specification in JSON format
+      tags:
+        - System
+      security: []
+      responses:
+        '200':
+          description: OpenAPI specification
+          content:
+            application/json:
+              schema:
+                type: object
+
   /user:
     post:
       summary: Create User

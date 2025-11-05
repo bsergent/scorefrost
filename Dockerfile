@@ -10,5 +10,6 @@ FROM alpine:latest
 WORKDIR /app
 COPY --from=builder /app/scorefrost .
 COPY sql/ ./sql/
+COPY openapi.yaml ./
 EXPOSE 8080
 CMD ["./scorefrost"]

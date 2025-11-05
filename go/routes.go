@@ -29,6 +29,9 @@ func setupRoutes(db *sql.DB) *http.ServeMux {
 	mux.HandleFunc("GET /admin/names", adminMiddleware(db, getPendingDisplayNamesHandler(db)))
 	mux.HandleFunc("PUT /admin/names/{user_id}", adminMiddleware(db, evaluateDisplayNameHandler(db)))
 
+	// Documentation routes
+	setupDocsRoutes(mux)
+
 	// Root endpoint - provides service info
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
