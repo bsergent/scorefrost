@@ -44,10 +44,37 @@ Stop database
 
 ## Testing
 
-### Unit Tests (Fast)
-Standard Go unit tests that don't require external dependencies:
+ScoreFrost follows Go testing conventions with well-organized test files:
+
+### Test Structure
+Tests are organized by source file following Go conventions:
+```
+go/
+├── main.go → main_test.go                    # Health endpoint, route registration
+├── auth.go → auth_test.go                    # IP extraction, context functions  
+├── user.go → user_test.go                    # API keys, display names, friend codes
+├── ratelimit.go → ratelimit_test.go         # Rate limiting functionality
+├── score.go → score_test.go                 # Level parsing, response structures
+├── admin.go → admin_test.go                 # Admin middleware, display name management
+├── integration_api_test.go                  # Full API integration tests
+├── integration_test.go                      # Integration test setup
+└── integration_utils.go                     # Integration test helpers
+```
+
+### Unit Tests (Fast, No Dependencies)
+Standard Go unit tests that don't require external services:
 ```bash
+# Run all unit tests
 go test ./go -v
+
+# Run specific test file
+go test ./go -run TestHealth
+
+# Run with coverage
+go test ./go -cover
+
+# Run short tests only (excludes slow tests)
+go test ./go -short
 ```
 
 ### Integration Tests (Full Database)
@@ -58,6 +85,9 @@ docker-compose up -d db
 
 # Run integration tests
 go test -tags=integration ./go -v
+
+# Run specific integration test
+go test -tags=integration ./go -run TestIntegrationUserCreation
 ```
 
 **From VS Code:**
@@ -69,24 +99,16 @@ go test -tags=integration ./go -v
 - **F5** → "Debug Unit Tests" (debug unit tests with breakpoints)
 - **F5** → "Debug Integration Tests" (debug integration tests with database)
 
-### Test Structure
-Following Go conventions, tests are located alongside the code:
-```
-go/
-├── main.go
-├── main_test.go              # Unit tests for core functions
-├── routes.go                 # Shared route setup (used by main + tests)
-├── integration_test.go       # Integration test setup (//go:build integration)
-├── integration_utils.go      # Integration test utilities (//go:build integration)
-├── integration_api_test.go   # Full API integration tests (//go:build integration)
-└── test_setup.go            # Test-specific route setup (//go:build integration)
-```
-
-**Test Coverage:**
-- ✅ Unit tests: Health endpoint, rate limiting, API key generation, display names
-- ✅ Integration tests: User creation, score submission, best scores retrieval, multiple levels, version detection
-- ✅ Database integration: Real PostgreSQL with cleanup between tests
-- ✅ HTTP testing: Uses httptest.NewServer for in-process testing
+### Test Coverage Summary
+- ✅ **44 Unit Tests**: All core functions covered without external dependencies
+- ✅ **8 Integration Tests**: Complete API workflows with real database
+- ✅ **Database Integration**: Real PostgreSQL with cleanup between tests
+- ✅ **HTTP Testing**: Uses httptest.NewServer for in-process testing
+- ✅ **Authentication**: API key generation, hashing, and validation
+- ✅ **Rate Limiting**: IP-based request throttling
+- ✅ **Score Processing**: Level parsing, leaderboards, and score submission
+- ✅ **User Management**: User creation, display names, friend codes
+- ✅ **Admin Functionality**: Admin middleware, display name approval/rejection, authorization
 
 ## API Endpoints
 
