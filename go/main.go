@@ -47,8 +47,9 @@ func main() {
 	// Set up routes using shared function
 	mux := setupRoutes(db)
 
-	// Wrap mux with rate limiting middleware
-	handler := RateLimitMiddleware(rateLimiter, mux)
+	// Wrap mux with CORS middleware first, then rate limiting
+	corsHandler := corsMiddleware(mux)
+	handler := RateLimitMiddleware(rateLimiter, corsHandler)
 
 	// Create HTTP server
 	server := &http.Server{

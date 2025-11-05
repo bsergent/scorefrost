@@ -1,0 +1,878 @@
+openapi: 3.0.3
+info:
+  title: ScoreFrost API
+  description: |
+    A high-performance game score tracking and leaderboard system built with Go and PostgreSQL.
+    
+    ## Authentication
+    
+    Most endpoints require authentication using a Bearer token in the Authorization header:
+    ```
+    Authorization: Bearer <api_key>
+    ```
+    
+    ## Admin Access
+    
+    Admin endpoints require the authenticated user to be the dev user (ID: `00000000-0000-0000-0000-000000000001`).
+    
+    ## CORS Support
+    
+    The API includes CORS headers to support browser-based requests from different origins.
+    All origins are currently allowed (`Access-Control-Allow-Origin: *`).
+    
+    ## Rate Limiting
+    
+    All endpoints are rate-limited to 100 requests per minute per IP address.
+    
+    ## Score Types
+    
+    Supported score types for leaderboards and best scores:
+    - `time_ms` - Completion time in milliseconds (lower is better)
+    - `striping` - Coverage/striping percentage (higher is better) 
+    - `fuel` - Fuel consumption (lower is better)
+    - `stars` - Star rating achieved (higher is better)
+  version: 1.0.0
+  contact:
+    name: ScoreFrost API Support
+  license:
+    name: MIT
+servers:
+  - url: http://localhost:8080
+    description: Development server
+  - url: https://api.scorefrost.com
+    description: Production server
+
+security:
+  - BearerAuth: []
+
+paths:
+  /:
+    get:
+      summary: Service Information
+      description: Returns basic service information and health status
+      tags:
+        - System
+      security: []
+      responses:
+        '200':
+          description: Service information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                    example: "scorefrost"
+                  env_port:
+                    type: string
+                    example: "8080"
+                required:
+                  - service
+                  - env_port
+
+  /health:
+    get:
+      summary: Health Check
+      description: Returns server health status
+      tags:
+        - System
+      security: []
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  timestamp:
+                    type: string
+                    format: date-time
+                required:
+                  - status
+                  - timestamp
+
+  /user:
+    post:
+      summary: Create User
+      description: Creates a new user with auto-generated credentials
+      tags:
+        - Users
+      security: []
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUserResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /user/{id}:
+    get:
+      summary: Get User
+      description: Retrieves user information by ID
+      tags:
+        - Users
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: User ID (UUID)
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: User information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetUserResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /user/{id}/name:
+    put:
+      summary: Update Display Name
+      description: Updates the user's display name (requires approval for certain names)
+      tags:
+        - Users
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: User ID (UUID)
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDisplayNameRequest'
+      responses:
+        '200':
+          description: Display name updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateDisplayNameResponse'
+        '400':
+          description: Invalid request or display name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: User can only update their own display name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /score/submit:
+    post:
+      summary: Submit Score
+      description: Submits a new score for a level
+      tags:
+        - Scores
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScoreSubmissionRequest'
+      responses:
+        '200':
+          description: Score submitted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreSubmissionResponse'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /score/best:
+    get:
+      summary: Get Best Scores
+      description: Retrieves the authenticated user's best scores
+      tags:
+        - Scores
+      parameters:
+        - name: levels
+          in: query
+          required: false
+          description: |
+            Comma-separated list of level specifications in format "level_id" or "level_id.version".
+            If version is omitted, the latest version is used.
+            Examples: "level1", "level1.2", "level1,level2.1,level3"
+          schema:
+            type: string
+            example: "level1,level2.1,level3"
+        - name: score_type
+          in: query
+          required: false
+          description: Filter by specific score type
+          schema:
+            type: string
+            enum: [time_ms, striping, fuel, stars]
+            example: "time_ms"
+      responses:
+        '200':
+          description: Best scores retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BestScoresResponse'
+        '400':
+          description: Invalid levels parameter format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /score/leaderboard:
+    get:
+      summary: Get Leaderboard
+      description: Retrieves leaderboard with top scores per level and score type
+      tags:
+        - Scores
+      parameters:
+        - name: levels
+          in: query
+          required: false
+          description: |
+            Comma-separated list of level specifications in format "level_id" or "level_id.version".
+            If version is omitted, the latest version is used.
+            Examples: "level1", "level1.2", "level1,level2.1,level3"
+          schema:
+            type: string
+            example: "level1,level2.1,level3"
+        - name: score_type
+          in: query
+          required: false
+          description: Filter by specific score type
+          schema:
+            type: string
+            enum: [time_ms, striping, fuel, stars]
+            example: "time_ms"
+        - name: offset
+          in: query
+          required: false
+          description: Number of records to skip for pagination
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+            example: 0
+        - name: size
+          in: query
+          required: false
+          description: Number of records to return (max 100)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+            example: 10
+      responses:
+        '200':
+          description: Leaderboard retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaderboardResponse'
+        '400':
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/names:
+    get:
+      summary: Get Pending Display Names
+      description: Retrieves all pending display name changes requiring admin approval
+      tags:
+        - Admin
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Pending display names retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetPendingDisplayNamesResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /admin/names/{user_id}:
+    put:
+      summary: Evaluate Display Name
+      description: Approve or reject a pending display name change
+      tags:
+        - Admin
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: User ID (UUID)
+          schema:
+            type: string
+            format: uuid
+            example: "123e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EvaluateDisplayNameRequest'
+      responses:
+        '200':
+          description: Display name evaluation completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluateDisplayNameResponse'
+        '400':
+          description: Invalid request or no pending display name
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Admin access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: API key obtained from user creation
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Invalid request parameters"
+      required:
+        - error
+
+    CreateUserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique user identifier
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        friend_code:
+          type: string
+          description: Unique 6-character friend code
+          example: "ABC123"
+        display_name:
+          type: string
+          description: Auto-generated display name
+          example: "CoolGamer42"
+        api_key:
+          type: string
+          description: API key for authentication (only returned once)
+          example: "sk_1234567890abcdef..."
+      required:
+        - id
+        - friend_code
+        - display_name
+        - api_key
+
+    GetUserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique user identifier
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        display_name:
+          type: string
+          description: User's display name
+          example: "CoolGamer42"
+        friend_code:
+          type: string
+          description: Unique 6-character friend code
+          example: "ABC123"
+      required:
+        - id
+        - display_name
+        - friend_code
+
+    UpdateDisplayNameRequest:
+      type: object
+      properties:
+        display_name:
+          type: string
+          description: New display name (3-20 characters, alphanumeric plus spaces, underscores, hyphens)
+          minLength: 3
+          maxLength: 20
+          pattern: '^[a-zA-Z0-9 _-]+$'
+          example: "NewGamerName"
+      required:
+        - display_name
+
+    UpdateDisplayNameResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: User ID
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        display_name:
+          type: string
+          description: Updated display name
+          example: "NewGamerName"
+        message:
+          type: string
+          description: Status message
+          example: "Display name updated successfully"
+      required:
+        - id
+        - display_name
+        - message
+
+    ScoreSubmissionRequest:
+      type: object
+      properties:
+        level_id:
+          type: string
+          description: Unique identifier for the level
+          example: "level_001"
+        level_version:
+          type: integer
+          description: Version number of the level
+          minimum: 1
+          example: 2
+        game_version:
+          type: string
+          description: Version of the game client
+          example: "1.2.3"
+        solution:
+          type: string
+          description: Base64 encoded solution data
+          example: "eyJtb3ZlcyI6WyJ1cCIsImRvd24iLCJsZWZ0Il19"
+        solution_hash:
+          type: string
+          description: SHA256 hash of solution + secret salt for integrity verification
+          example: "a1b2c3d4e5f6..."
+        scores:
+          type: object
+          description: Map of score type to score value
+          additionalProperties:
+            type: integer
+          example:
+            time_ms: 15420
+            striping: 95
+            fuel: 45
+      required:
+        - level_id
+        - level_version
+        - game_version
+        - solution
+        - solution_hash
+        - scores
+
+    ScoreSubmissionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: Whether submission was successful
+          example: true
+        solution_id:
+          type: integer
+          description: Unique identifier for the submitted solution
+          example: 42
+        message:
+          type: string
+          description: Success or error message
+          example: "Score submitted successfully"
+      required:
+        - success
+
+    BestScoreEntry:
+      type: object
+      properties:
+        level_id:
+          type: string
+          description: Level identifier
+          example: "level_001"
+        level_version:
+          type: integer
+          description: Level version
+          example: 2
+        score_type:
+          type: string
+          description: Type of score
+          enum: [time_ms, striping, fuel, stars]
+          example: "time_ms"
+        best_score:
+          type: integer
+          description: Best score value
+          example: 15420
+        user_id:
+          type: string
+          format: uuid
+          description: User who achieved this score
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        display_name:
+          type: string
+          description: Display name of the user
+          example: "CoolGamer42"
+        friend_code:
+          type: string
+          description: Friend code of the user
+          example: "ABC123"
+      required:
+        - level_id
+        - level_version
+        - score_type
+        - best_score
+        - user_id
+        - display_name
+        - friend_code
+
+    BestScoresResponse:
+      type: object
+      properties:
+        scores:
+          type: array
+          items:
+            $ref: '#/components/schemas/BestScoreEntry'
+          description: Array of best score entries
+        count:
+          type: integer
+          description: Number of scores returned
+          example: 5
+        scope:
+          type: string
+          description: Scope of the scores (user-specific)
+          example: "user"
+      required:
+        - scores
+        - count
+        - scope
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        rank:
+          type: integer
+          description: Rank position in leaderboard
+          minimum: 1
+          example: 1
+        level_id:
+          type: string
+          description: Level identifier
+          example: "level_001"
+        level_version:
+          type: integer
+          description: Level version
+          example: 2
+        score_type:
+          type: string
+          description: Type of score
+          enum: [time_ms, striping, fuel, stars]
+          example: "time_ms"
+        best_score:
+          type: integer
+          description: Best score value
+          example: 15420
+        user_id:
+          type: string
+          format: uuid
+          description: User who achieved this score
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        display_name:
+          type: string
+          description: Display name of the user
+          example: "CoolGamer42"
+        friend_code:
+          type: string
+          description: Friend code of the user
+          example: "ABC123"
+      required:
+        - rank
+        - level_id
+        - level_version
+        - score_type
+        - best_score
+        - user_id
+        - display_name
+        - friend_code
+
+    PaginationInfo:
+      type: object
+      properties:
+        offset:
+          type: integer
+          description: Number of records skipped
+          minimum: 0
+          example: 0
+        size:
+          type: integer
+          description: Number of records requested
+          minimum: 1
+          maximum: 100
+          example: 10
+        total:
+          type: integer
+          description: Total number of records available
+          minimum: 0
+          example: 150
+      required:
+        - offset
+        - size
+        - total
+
+    LeaderboardResponse:
+      type: object
+      properties:
+        scores:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeaderboardEntry'
+          description: Array of leaderboard entries
+        count:
+          type: integer
+          description: Number of scores returned
+          example: 10
+        scope:
+          type: string
+          description: Scope of the scores (global leaderboard)
+          example: "global"
+        pagination:
+          $ref: '#/components/schemas/PaginationInfo'
+      required:
+        - scores
+        - count
+        - scope
+        - pagination
+
+    PendingDisplayName:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: User ID
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        friend_code:
+          type: string
+          description: User's friend code
+          example: "ABC123"
+        current_display_name:
+          type: string
+          description: Current display name
+          example: "OldName"
+        pending_display_name:
+          type: string
+          description: Requested new display name
+          example: "NewName"
+        display_name_status:
+          type: integer
+          description: Status code for the pending change
+          example: 1
+      required:
+        - user_id
+        - friend_code
+        - current_display_name
+        - pending_display_name
+        - display_name_status
+
+    GetPendingDisplayNamesResponse:
+      type: object
+      properties:
+        pending_names:
+          type: array
+          items:
+            $ref: '#/components/schemas/PendingDisplayName'
+          description: Array of pending display name changes
+        count:
+          type: integer
+          description: Number of pending names
+          example: 3
+      required:
+        - pending_names
+        - count
+
+    EvaluateDisplayNameRequest:
+      type: object
+      properties:
+        approve:
+          type: boolean
+          description: Whether to approve (true) or reject (false) the display name change
+          example: true
+      required:
+        - approve
+
+    EvaluateDisplayNameResponse:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: User ID
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        display_name:
+          type: string
+          description: Final display name after evaluation
+          example: "ApprovedName"
+        status:
+          type: integer
+          description: Final status code
+          example: 2
+        status_message:
+          type: string
+          description: Result of the evaluation
+          enum: [approved, rejected]
+          example: "approved"
+      required:
+        - user_id
+        - display_name
+        - status
+        - status_message
+
+tags:
+  - name: System
+    description: System health and information endpoints
+  - name: Users
+    description: User management operations
+  - name: Scores
+    description: Score submission and retrieval operations
+  - name: Admin
+    description: Administrative operations (requires dev user access)
