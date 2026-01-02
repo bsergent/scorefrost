@@ -90,7 +90,7 @@ func connectToDB() (*sql.DB, error) {
 	dbPort := os.Getenv("PGPORT")
 	dbUser := os.Getenv("PGUSER")
 	dbPassword := os.Getenv("PGPASSWORD")
-	dbName := os.Getenv("PGDATABASE")
+	dbName := os.Getenv("PGDB")
 
 	// PostgreSQL DSN
 	dsn := fmt.Sprintf(
