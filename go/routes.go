@@ -16,7 +16,7 @@ func setupRoutes(db *sql.DB) *http.ServeMux {
 	mux.HandleFunc("/health", health)
 
 	// User routes
-	mux.HandleFunc("POST /api/v1/user", createUserHandler(db))
+	mux.HandleFunc("POST /api/v1/user", loginUserHandler(db))
 	mux.HandleFunc("GET /api/v1/user/{id}", getUserHandler(db))
 	mux.HandleFunc("PUT /api/v1/user/{id}/name", authMiddleware(db, updateDisplayNameHandler(db)))
 

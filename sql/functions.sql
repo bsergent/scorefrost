@@ -535,3 +535,39 @@ BEGIN
     RETURN QUERY EXECUTE v_sql;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Function to calculate total play time for a user by summing all their time_ms scores
+-- Returns the total play time in milliseconds
+CREATE OR REPLACE FUNCTION get_user_play_time_ms(p_user_id UUID)
+RETURNS INTEGER AS $$
+DECLARE
+    v_total_time INTEGER := 0;
+BEGIN
+    -- Sum all time_ms scores for the user
+    SELECT COALESCE(SUM(sc.score), 0) INTO v_total_time
+    FROM solution s
+    JOIN score sc ON s.id = sc.solution_id
+    WHERE s.user_id = p_user_id 
+      AND sc.type_id = 'time_ms';
+    
+    RETURN v_total_time;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to update user's last active time and game version
+-- Called during login to track user activity
+CREATE OR REPLACE FUNCTION touch_user_active_time(
+    p_user_id UUID,
+    p_game_version VARCHAR(32)
+) RETURNS VOID AS $$
+BEGIN
+    UPDATE "user"
+    SET date_time_active_utc = NOW() AT TIME ZONE 'UTC',
+        game_version = p_game_version
+    WHERE id = p_user_id;
+    
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'User not found: %', p_user_id;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;

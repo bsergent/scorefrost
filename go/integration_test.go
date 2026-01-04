@@ -27,7 +27,7 @@ func TestMain(m *testing.M) {
 func setupIntegration() {
 	// Initialize integration test configuration
 	integrationConfig = IntegrationConfig{
-		DBConnString: getEnvOrDefault("TEST_DB_CONN", "host=localhost port=5432 user=scorefrost password=password123 dbname=scorefrost sslmode=disable"),
+		DBConnString: getEnvOrDefault("TEST_DB_CONN", "host=localhost port=5432 user=scorefrost password=secret123 dbname=scorefrost sslmode=disable"),
 		SolutionSalt: getEnvOrDefault("SOLUTION_SALT", "your_secret_salt_change_in_production"),
 	}
 

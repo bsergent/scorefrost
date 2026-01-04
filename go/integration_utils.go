@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
@@ -45,6 +46,22 @@ func prepareIntegrationDatabase() {
 		log.Fatalf("Failed to connect to integration database: %v", err)
 	}
 	defer db.Close()
+
+	// Drop all existing tables to ensure clean state for integration tests
+	log.Println("Dropping existing database objects for clean integration test state...")
+	dropScript := "../sql/drop_all.sql"
+	if dropSQL, err := os.ReadFile(dropScript); err == nil {
+		if _, err := db.Exec(string(dropSQL)); err != nil {
+			log.Printf("Warning: Failed to drop existing objects: %v", err)
+		}
+	} else {
+		log.Printf("Warning: Could not read %s: %v", dropScript, err)
+	}
+
+	// Initialize database schema for integration tests
+	if err := initializeDatabase(db, "../sql"); err != nil {
+		log.Fatalf("Failed to initialize database schema: %v", err)
+	}
 
 	// Clean up existing test data
 	cleanupIntegrationData()
@@ -119,13 +136,70 @@ type IntegrationTestUser struct {
 }
 
 func createIntegrationTestUser(baseURL string) (*IntegrationTestUser, error) {
-	resp, err := http.Post(baseURL+"/user", "application/json", nil)
+	// Create request body for new user creation
+	requestBody := map[string]string{
+		"game_id":      "com.company.testgame",
+		"game_version": "1.0.0",
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	resp, err := http.Post(baseURL+"/api/v1/user", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var user IntegrationTestUser
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+func authenticateIntegrationTestUser(baseURL string, apiKey string) (*IntegrationTestUser, error) {
+	// Create request body for user authentication
+	requestBody := map[string]string{
+		"game_id":      "com.company.testgame",
+		"game_version": "1.0.0",
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Create HTTP request with Authorization header
+	req, err := http.NewRequest("POST", baseURL+"/api/v1/user", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	// Send request
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("authentication failed: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
 	}

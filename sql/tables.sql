@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS "user" (
     display_name_status SMALLINT NOT NULL DEFAULT 0, -- 0=Pending, 1=Approved, 2=Rejected
     api_key_hash VARCHAR(64) NOT NULL,
     date_time_created_utc TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'),
+    date_time_active_utc TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'),
+    game_version VARCHAR(32),
     CONSTRAINT chk_display_name_status CHECK (display_name_status IN (0, 1, 2))
 );
 

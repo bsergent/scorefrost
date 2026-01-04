@@ -8,11 +8,11 @@ import (
 )
 
 // initializeDatabase creates all database tables and functions
-func initializeDatabase(db *sql.DB) error {
+func initializeDatabase(db *sql.DB, sqlDir string) error {
 	log.Println("Initializing database schema...")
 
 	// Read and execute tables first
-	tablesSQL, err := os.ReadFile("sql/tables.sql")
+	tablesSQL, err := os.ReadFile(fmt.Sprintf("%s/tables.sql", sqlDir))
 	if err != nil {
 		return fmt.Errorf("failed to read tables.sql: %w", err)
 	}
@@ -24,7 +24,7 @@ func initializeDatabase(db *sql.DB) error {
 	log.Println("Database tables initialized successfully")
 
 	// Read and execute functions
-	functionsSQL, err := os.ReadFile("sql/functions.sql")
+	functionsSQL, err := os.ReadFile(fmt.Sprintf("%s/functions.sql", sqlDir))
 	if err != nil {
 		return fmt.Errorf("failed to read functions.sql: %w", err)
 	}

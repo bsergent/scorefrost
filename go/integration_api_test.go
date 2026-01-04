@@ -42,6 +42,48 @@ func TestIntegrationUserCreation(t *testing.T) {
 	}
 }
 
+func TestIntegrationUserAuthentication(t *testing.T) {
+	db := mustConnectToIntegrationDB()
+	defer db.Close()
+
+	server := httptest.NewServer(setupTestRoutes(db))
+	defer server.Close()
+
+	// First create a new user
+	newUser, err := createIntegrationTestUser(server.URL)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Now authenticate with the API key from the new user
+	authenticatedUser, err := authenticateIntegrationTestUser(server.URL, newUser.APIKey)
+	if err != nil {
+		t.Fatalf("Failed to authenticate user: %v", err)
+	}
+
+	// Verify the authenticated user matches the original user
+	if authenticatedUser.ID != newUser.ID {
+		t.Errorf("Authenticated user ID mismatch: got %s, want %s", authenticatedUser.ID, newUser.ID)
+	}
+	if authenticatedUser.FriendCode != newUser.FriendCode {
+		t.Errorf("Authenticated user friend code mismatch: got %s, want %s", authenticatedUser.FriendCode, newUser.FriendCode)
+	}
+	if authenticatedUser.DisplayName != newUser.DisplayName {
+		t.Errorf("Authenticated user display name mismatch: got %s, want %s", authenticatedUser.DisplayName, newUser.DisplayName)
+	}
+
+	// API key should not be included in authentication response
+	if authenticatedUser.APIKey != "" {
+		t.Error("API key should not be included in authentication response")
+	}
+
+	// Test authentication with invalid API key
+	_, err = authenticateIntegrationTestUser(server.URL, "invalid-api-key")
+	if err == nil {
+		t.Error("Authentication with invalid API key should fail")
+	}
+}
+
 func TestIntegrationScoreSubmission(t *testing.T) {
 	db := mustConnectToIntegrationDB()
 	defer db.Close()

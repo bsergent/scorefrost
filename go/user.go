@@ -35,12 +35,22 @@ var nouns = []string{
 	"Tiger", "Titan", "Viking", "Warrior", "Wizard", "Wolf", "Wonder", "Yeti",
 }
 
-// CreateUserResponse represents the JSON response for POST /user
-type CreateUserResponse struct {
-	ID          string `json:"id"`
-	FriendCode  string `json:"friend_code"`
-	DisplayName string `json:"display_name"`
-	APIKey      string `json:"api_key"`
+// LoginRequest represents the JSON request body for POST /api/v1/user (login/create)
+type LoginRequest struct {
+	GameID      string `json:"game_id"`
+	GameVersion string `json:"game_version"`
+}
+
+// UserFull represents detailed user information returned by login
+type UserFull struct {
+	ID                 string `json:"id"`
+	FriendCode         string `json:"friend_code"`
+	DisplayName        string `json:"display_name"`
+	DateTimeCreatedUTC string `json:"date_time_created_utc"`
+	DateTimeActiveUTC  string `json:"date_time_active_utc"`
+	GameVersion        string `json:"game_version"`
+	PlayTimeMs         int    `json:"play_time_ms"`
+	APIKey             string `json:"api_key,omitempty"` // Only included for new users
 }
 
 // GetUserResponse represents the JSON response for GET /user/{id}
@@ -62,90 +72,78 @@ type UpdateDisplayNameResponse struct {
 	Message     string `json:"message"`
 }
 
-// createUserHandler handles POST /user requests
-func createUserHandler(db *sql.DB) http.HandlerFunc {
+// loginUserHandler handles POST /api/v1/user requests (login/create)
+func loginUserHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Generate new UUID for the user
-		userID := uuid.New()
+		// Parse request body
+		var req LoginRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
 
-		// Generate a random 256-bit API key (32 bytes)
-		apiKey, err := generateAPIKey()
-		if err != nil {
-			log.Printf("Failed to generate API key: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		// Validate required fields
+		if strings.TrimSpace(req.GameID) == "" {
+			http.Error(w, "game_id is required", http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(req.GameVersion) == "" {
+			http.Error(w, "game_version is required", http.StatusBadRequest)
 			return
 		}
 
-		// Hash the API key for storage
-		apiKeyHash := hashAPIKey(apiKey)
+		// Get Authorization header
+		auth := r.Header.Get("Authorization")
+		var apiKey string
+		var isNewUser bool
 
-		// Generate random display name
-		displayName, err := generateRandomDisplayName()
-		if err != nil {
-			log.Printf("Failed to generate display name: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
+		// Check if API key is provided
+		if auth != "" && strings.HasPrefix(auth, "Bearer ") {
+			apiKey = strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
 		}
 
-		// Generate a unique friend code with retry logic
-		const maxRetries = 10
-		var friendCode string
-		var returnedID string
+		var userFull *UserFull
+		var err error
 
-		for i := range maxRetries {
-			// Generate friend code
-			friendCode, err = generateFriendCode()
+		if apiKey == "" {
+			// No API key provided - create new user
+			userFull, err = createNewUser(db)
 			if err != nil {
-				log.Printf("Failed to generate friend code: %v", err)
+				log.Printf("Failed to create new user: %v", err)
+				http.Error(w, "Failed to create user", http.StatusInternalServerError)
+				return
+			}
+			isNewUser = true
+		} else {
+			// API key provided - authenticate existing user or return error
+			userFull, err = authenticateUser(db, apiKey)
+			if err != nil {
+				if err.Error() == "user not found" {
+					log.Printf("Authentication failed: Invalid API key from IP %s", getIPAddress(r))
+					http.Error(w, "Unauthorized: Invalid API key", http.StatusUnauthorized)
+					return
+				}
+				log.Printf("Authentication error: %v", err)
 				http.Error(w, "Internal server error", http.StatusInternalServerError)
 				return
 			}
-
-			// Try to insert user into database
-			err = db.QueryRow(
-				"SELECT create_user($1, $2, $3, $4)",
-				userID.String(),
-				friendCode,
-				displayName,
-				apiKeyHash,
-			).Scan(&returnedID)
-
-			// If successful, break out of retry loop
-			if err == nil {
-				break
-			}
-
-			// Check if error is due to duplicate friend code
-			// If it's a different error, return immediately
-			if !isDuplicateKeyError(err) {
-				log.Printf("Failed to create user: %v", err)
-				http.Error(w, "Failed to create user", http.StatusInternalServerError)
-				return
-			}
-
-			// If last retry, return error
-			if i == maxRetries-1 {
-				log.Printf("Failed to generate unique friend code after %d attempts", maxRetries)
-				http.Error(w, "Failed to create user", http.StatusInternalServerError)
-				return
-			}
-
-			// Otherwise, retry with new friend code
-			log.Printf("Friend code collision, retrying... (attempt %d/%d)", i+1, maxRetries)
 		}
 
-		// Prepare response
-		response := CreateUserResponse{
-			ID:          userID.String(),
-			FriendCode:  friendCode,
-			DisplayName: displayName,
-			APIKey:      apiKey,
+		// Update user's active time
+		if err := updateUserActiveTime(db, userFull.ID, req.GameVersion); err != nil {
+			log.Printf("Failed to update user active time: %v", err)
+			// Don't fail the request, just log the error
 		}
 
 		// Send JSON response
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		if err := json.NewEncoder(w).Encode(response); err != nil {
+		statusCode := http.StatusOK
+		if isNewUser {
+			statusCode = http.StatusCreated
+		}
+		w.WriteHeader(statusCode)
+		if err := json.NewEncoder(w).Encode(userFull); err != nil {
 			log.Printf("Failed to encode response: %v", err)
 		}
 	}
@@ -353,4 +351,135 @@ func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 			log.Printf("Failed to encode response: %v", err)
 		}
 	}
+}
+
+// Helper function to create a new user and return UserFull details
+func createNewUser(db *sql.DB) (*UserFull, error) {
+	// Generate new UUID for the user
+	userID := uuid.New()
+
+	// Generate a random 256-bit API key (32 bytes)
+	apiKey, err := generateAPIKey()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate API key: %w", err)
+	}
+
+	// Hash the API key for storage
+	apiKeyHash := hashAPIKey(apiKey)
+
+	// Generate random display name
+	displayName, err := generateRandomDisplayName()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate display name: %w", err)
+	}
+
+	// Generate a unique friend code with retry logic
+	const maxRetries = 10
+	var friendCode string
+	var returnedID string
+
+	for i := range maxRetries {
+		// Generate friend code
+		friendCode, err = generateFriendCode()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate friend code: %w", err)
+		}
+
+		// Try to insert user into database
+		err = db.QueryRow(
+			"SELECT create_user($1, $2, $3, $4)",
+			userID.String(),
+			friendCode,
+			displayName,
+			apiKeyHash,
+		).Scan(&returnedID)
+
+		// If successful, break out of retry loop
+		if err == nil {
+			break
+		}
+
+		// Check if error is due to duplicate friend code
+		if !isDuplicateKeyError(err) {
+			return nil, fmt.Errorf("failed to create user: %w", err)
+		}
+
+		// If last retry, return error
+		if i == maxRetries-1 {
+			return nil, fmt.Errorf("failed to generate unique friend code after %d attempts", maxRetries)
+		}
+	}
+
+	// Create UserFull response with the new API key
+	return fetchUserFullObject(db, userID.String(), apiKey)
+}
+
+// Helper function to authenticate existing user and return UserFull details
+func authenticateUser(db *sql.DB, apiKey string) (*UserFull, error) {
+	// Hash the provided API key
+	hashedKey := hashAPIKey(apiKey)
+
+	// Look up user by API key hash
+	var userID string
+	err := db.QueryRow(`
+		SELECT id
+		FROM "user"
+		WHERE api_key_hash = $1
+	`, hashedKey).Scan(&userID)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("user not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+
+	// Create UserFull response without API key
+	return fetchUserFullObject(db, userID, "")
+}
+
+// Helper function to create UserFull struct with calculated play time
+func fetchUserFullObject(db *sql.DB, userID, apiKey string) (*UserFull, error) {
+	// Query user details with calculated play time
+	var createdTime, activeTime, gameVersion, displayName, friendCode sql.NullString
+	var playTime int
+
+	err := db.QueryRow(`
+		SELECT 
+			date_time_created_utc,
+			COALESCE(date_time_active_utc, date_time_created_utc),
+			COALESCE(game_version, ''),
+			COALESCE(display_name, ''),
+			friend_code,
+			get_user_play_time_ms($1)
+		FROM "user"
+		WHERE id = $1
+	`, userID).Scan(&createdTime, &activeTime, &gameVersion, &displayName, &friendCode, &playTime)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch user details: %w", err)
+	}
+
+	userFull := &UserFull{
+		ID:                 userID,
+		FriendCode:         friendCode.String,
+		DisplayName:        displayName.String,
+		DateTimeCreatedUTC: createdTime.String,
+		DateTimeActiveUTC:  activeTime.String,
+		GameVersion:        gameVersion.String,
+		PlayTimeMs:         playTime,
+	}
+
+	// Include API key only for new users
+	if apiKey != "" {
+		userFull.APIKey = apiKey
+	}
+
+	return userFull, nil
+}
+
+// Helper function to update user's active time using stored procedure
+func updateUserActiveTime(db *sql.DB, userID, gameVersion string) error {
+	_, err := db.Exec("SELECT touch_user_active_time($1, $2)", userID, gameVersion)
+	return err
 }
