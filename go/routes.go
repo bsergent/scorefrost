@@ -13,7 +13,7 @@ func setupRoutes(db *sql.DB) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Health endpoint
-	mux.HandleFunc("/api/v1/health", health)
+	mux.HandleFunc("/health", health)
 
 	// User routes
 	mux.HandleFunc("POST /api/v1/user", createUserHandler(db))
@@ -26,8 +26,8 @@ func setupRoutes(db *sql.DB) *http.ServeMux {
 	mux.HandleFunc("GET /api/v1/score/leaderboard", authMiddleware(db, leaderboardHandler(db)))
 
 	// Admin routes
-	mux.HandleFunc("GET /api/v1/admin/names", adminMiddleware(db, getPendingDisplayNamesHandler(db)))
-	mux.HandleFunc("PUT /api/v1/admin/names/{user_id}", adminMiddleware(db, evaluateDisplayNameHandler(db)))
+	mux.HandleFunc("GET /admin/v1/names", adminMiddleware(db, getPendingDisplayNamesHandler(db)))
+	mux.HandleFunc("PUT /admin/v1/names/{user_id}", adminMiddleware(db, evaluateDisplayNameHandler(db)))
 
 	// Documentation routes
 	setupDocsRoutes(mux)

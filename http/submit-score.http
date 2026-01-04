@@ -1,5 +1,5 @@
 ### Submit Score
-POST {{host}}/score/submit
+POST {{host}}/api/v1/score/submit
 Content-Type: application/json
 Authorization: Bearer {{dev_api_key}}
 

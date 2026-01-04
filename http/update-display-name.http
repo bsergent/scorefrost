@@ -1,13 +1,13 @@
 ### Update Display Name Endpoint Test
 
 ### Step 1: Create a new user to get credentials
-POST http://localhost:8080/user
+POST http://localhost:8080/api/v1/user
 Content-Type: application/json
 
 ### Copy the id and api_key from the response above
 
 ### Step 2: Update display name (replace USER_ID and API_KEY)
-PUT http://localhost:8080/user/d18bb07f-52f5-4bc1-8f06-ff72eba49fe5/name
+PUT http://localhost:8080/api/v1/user/d18bb07f-52f5-4bc1-8f06-ff72eba49fe5/name
 Authorization: Bearer h94TvWWG1OjTYq1qM7NWcF9swAS+yX8PNpI25tyGlE8=
 Content-Type: application/json
 
@@ -18,12 +18,12 @@ Content-Type: application/json
 ###
 
 ### Step 3: Verify the update by getting user info
-GET http://localhost:8080/user/d18bb07f-52f5-4bc1-8f06-ff72eba49fe5
+GET http://localhost:8080/api/v1/user/d18bb07f-52f5-4bc1-8f06-ff72eba49fe5
 
 ###
 
 ### Error case: Missing authorization (should return 401)
-PUT http://localhost:8080/user/550e8400-e29b-41d4-a716-446655440000/name
+PUT http://localhost:8080/api/v1/user/550e8400-e29b-41d4-a716-446655440000/name
 Content-Type: application/json
 
 {

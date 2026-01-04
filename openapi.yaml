@@ -107,7 +107,7 @@ paths:
         '301':
           description: Redirect to Swagger UI
 
-  /openapi.json:
+  /api/v1/openapi.json:
     get:
       summary: OpenAPI Specification
       description: Returns the OpenAPI specification in JSON format
@@ -122,7 +122,7 @@ paths:
               schema:
                 type: object
 
-  /user:
+  /api/v1/user:
     post:
       summary: Create User
       description: Creates a new user with auto-generated credentials
@@ -143,7 +143,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /user/{id}:
+  /api/v1/user/{id}:
     get:
       summary: Get User
       description: Retrieves user information by ID
@@ -179,7 +179,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /user/{id}/name:
+  /api/v1/user/{id}/name:
     put:
       summary: Update Display Name
       description: Updates the user's display name (requires approval for certain names)
@@ -238,7 +238,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /score/submit:
+  /api/v1/score/submit:
     post:
       summary: Submit Score
       description: Submits a new score for a level
@@ -276,7 +276,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /score/best:
+  /api/v1/score/best:
     get:
       summary: Get Best Scores
       description: Retrieves the authenticated user's best scores
@@ -327,7 +327,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /score/leaderboard:
+  /api/v1/score/leaderboard:
     get:
       summary: Get Leaderboard
       description: Retrieves leaderboard with top scores per level and score type
@@ -397,7 +397,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /admin/names:
+  /admin/v1/names:
     get:
       summary: Get Pending Display Names
       description: Retrieves all pending display name changes requiring admin approval
@@ -431,7 +431,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /admin/names/{user_id}:
+  /admin/v1/names/{user_id}:
     put:
       summary: Evaluate Display Name
       description: Approve or reject a pending display name change
