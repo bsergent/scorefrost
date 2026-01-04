@@ -47,8 +47,9 @@ func main() {
 	// Set up routes using shared function
 	mux := setupRoutes(db)
 
-	// Wrap mux with CORS middleware first, then rate limiting
-	corsHandler := corsMiddleware(mux)
+	// Wrap mux with middleware
+	loggingHandler := requestLogMiddleware(mux)
+	corsHandler := corsMiddleware(loggingHandler)
 	handler := RateLimitMiddleware(rateLimiter, corsHandler)
 
 	// Create HTTP server
@@ -122,6 +123,14 @@ func connectToDB() (*sql.DB, error) {
 
 	log.Println("Connected to PostgreSQL!")
 	return db, nil
+}
+
+// requestLogMiddleware logs the HTTP method and URL of each request
+func requestLogMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		next.ServeHTTP(w, r)
+	})
 }
 
 func health(w http.ResponseWriter, r *http.Request) {
