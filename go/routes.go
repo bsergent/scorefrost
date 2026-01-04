@@ -13,21 +13,21 @@ func setupRoutes(db *sql.DB) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Health endpoint
-	mux.HandleFunc("/health", health)
+	mux.HandleFunc("/api/v1/health", health)
 
 	// User routes
-	mux.HandleFunc("POST /user", createUserHandler(db))
-	mux.HandleFunc("GET /user/{id}", getUserHandler(db))
-	mux.HandleFunc("PUT /user/{id}/name", authMiddleware(db, updateDisplayNameHandler(db)))
+	mux.HandleFunc("POST /api/v1/user", createUserHandler(db))
+	mux.HandleFunc("GET /api/v1/user/{id}", getUserHandler(db))
+	mux.HandleFunc("PUT /api/v1/user/{id}/name", authMiddleware(db, updateDisplayNameHandler(db)))
 
 	// Score routes
-	mux.HandleFunc("POST /score/submit", authMiddleware(db, submitScoreHandler(db)))
-	mux.HandleFunc("GET /score/best", authMiddleware(db, bestScoresHandler(db)))
-	mux.HandleFunc("GET /score/leaderboard", authMiddleware(db, leaderboardHandler(db)))
+	mux.HandleFunc("POST /api/v1/score/submit", authMiddleware(db, submitScoreHandler(db)))
+	mux.HandleFunc("GET /api/v1/score/best", authMiddleware(db, bestScoresHandler(db)))
+	mux.HandleFunc("GET /api/v1/score/leaderboard", authMiddleware(db, leaderboardHandler(db)))
 
 	// Admin routes
-	mux.HandleFunc("GET /admin/names", adminMiddleware(db, getPendingDisplayNamesHandler(db)))
-	mux.HandleFunc("PUT /admin/names/{user_id}", adminMiddleware(db, evaluateDisplayNameHandler(db)))
+	mux.HandleFunc("GET /api/v1/admin/names", adminMiddleware(db, getPendingDisplayNamesHandler(db)))
+	mux.HandleFunc("PUT /api/v1/admin/names/{user_id}", adminMiddleware(db, evaluateDisplayNameHandler(db)))
 
 	// Documentation routes
 	setupDocsRoutes(mux)
