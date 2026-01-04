@@ -25,4 +25,4 @@ DROP TABLE IF EXISTS "user" CASCADE;
 -- Drop functions
 DROP FUNCTION IF EXISTS create_user(UUID, VARCHAR(9), VARCHAR(64), VARCHAR(64));
 
--- Note: After running this script, run schema.sql to recreate the tables
+-- Note: After running this script, run tables.sql to recreate the tables

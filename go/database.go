@@ -7,20 +7,33 @@ import (
 	"os"
 )
 
-// initializeDatabase creates all database tables
+// initializeDatabase creates all database tables and functions
 func initializeDatabase(db *sql.DB) error {
 	log.Println("Initializing database schema...")
 
-	// Read the schema file
-	schemaSQL, err := os.ReadFile("sql/schema.sql")
+	// Read and execute tables first
+	tablesSQL, err := os.ReadFile("sql/tables.sql")
 	if err != nil {
-		return fmt.Errorf("failed to read schema.sql: %w", err)
+		return fmt.Errorf("failed to read tables.sql: %w", err)
 	}
 
-	// Execute the schema
-	if _, err := db.Exec(string(schemaSQL)); err != nil {
-		return fmt.Errorf("failed to execute schema: %w", err)
+	// Execute the tables schema
+	if _, err := db.Exec(string(tablesSQL)); err != nil {
+		return fmt.Errorf("failed to execute tables schema: %w", err)
 	}
+	log.Println("Database tables initialized successfully")
+
+	// Read and execute functions
+	functionsSQL, err := os.ReadFile("sql/functions.sql")
+	if err != nil {
+		return fmt.Errorf("failed to read functions.sql: %w", err)
+	}
+
+	// Execute the functions schema
+	if _, err := db.Exec(string(functionsSQL)); err != nil {
+		return fmt.Errorf("failed to execute functions schema: %w", err)
+	}
+	log.Println("Database functions initialized successfully")
 
 	// Update dev user's API key hash from environment variable
 	devAPIKey := os.Getenv("DEV_API_KEY")
