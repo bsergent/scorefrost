@@ -35,17 +35,17 @@ var nouns = []string{
 	"Tiger", "Titan", "Viking", "Warrior", "Wizard", "Wolf", "Wonder", "Yeti",
 }
 
-// LoginRequest represents the JSON request body for POST /api/v1/user (login/create)
-type LoginRequest struct {
-	GameID      string `json:"game_id"`
-	GameVersion string `json:"game_version"`
+// User represents the JSON response for GET /user/{id}
+type User struct {
+	ApiResponse
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name"`
+	FriendCode  string `json:"friend_code"`
 }
 
 // UserFull represents detailed user information returned by login
 type UserFull struct {
-	ID                 string `json:"id"`
-	FriendCode         string `json:"friend_code"`
-	DisplayName        string `json:"display_name"`
+	User
 	DateTimeCreatedUTC string `json:"date_time_created_utc"`
 	DateTimeActiveUTC  string `json:"date_time_active_utc"`
 	GameVersion        string `json:"game_version"`
@@ -53,23 +53,15 @@ type UserFull struct {
 	APIKey             string `json:"api_key,omitempty"` // Only included for new users
 }
 
-// GetUserResponse represents the JSON response for GET /user/{id}
-type GetUserResponse struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"display_name"`
-	FriendCode  string `json:"friend_code"`
+// LoginRequest represents the JSON request body for POST /api/v1/user (login/create)
+type LoginRequest struct {
+	GameID      string `json:"game_id"`
+	GameVersion string `json:"game_version"`
 }
 
 // UpdateDisplayNameRequest represents the JSON request body for PUT /user/{id}/name
 type UpdateDisplayNameRequest struct {
 	DisplayName string `json:"display_name"`
-}
-
-// UpdateDisplayNameResponse represents the JSON response for PUT /user/{id}/name
-type UpdateDisplayNameResponse struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"display_name"`
-	Message     string `json:"message"`
 }
 
 // loginUserHandler handles POST /api/v1/user requests (login/create)
@@ -194,7 +186,7 @@ func getUserHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Prepare response
-		response := GetUserResponse{
+		response := User{
 			ID:          id,
 			DisplayName: displayName,
 			FriendCode:  friendCode,
@@ -338,10 +330,12 @@ func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Prepare response
-		response := UpdateDisplayNameResponse{
+		response := User{
+			ApiResponse: ApiResponse{
+				Message: "Display name updated and pending approval",
+			},
 			ID:          authenticatedUserID,
 			DisplayName: newDisplayName,
-			Message:     "Display name updated and pending approval",
 		}
 
 		// Send JSON response
@@ -461,9 +455,11 @@ func fetchUserFullObject(db *sql.DB, userID, apiKey string) (*UserFull, error) {
 	}
 
 	userFull := &UserFull{
-		ID:                 userID,
-		FriendCode:         friendCode.String,
-		DisplayName:        displayName.String,
+		User: User{
+			ID:          userID,
+			FriendCode:  friendCode.String,
+			DisplayName: displayName.String,
+		},
 		DateTimeCreatedUTC: createdTime.String,
 		DateTimeActiveUTC:  activeTime.String,
 		GameVersion:        gameVersion.String,

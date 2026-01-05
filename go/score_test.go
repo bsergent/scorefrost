@@ -96,14 +96,16 @@ func TestParseLevelsParameter(t *testing.T) {
 func TestLeaderboardResponseStructure(t *testing.T) {
 	// Test the leaderboard response structure types
 	entry := LeaderboardEntry{
-		Rank:         1,
-		LevelID:      "test",
-		LevelVersion: 1,
-		ScoreType:    "time_ms",
-		BestScore:    15000,
-		UserID:       "user123",
-		DisplayName:  "Test User",
-		FriendCode:   "ABC-123",
+		BestScoreEntry: BestScoreEntry{
+			LevelID:      "test",
+			LevelVersion: 1,
+			ScoreType:    "time_ms",
+			BestScore:    15000,
+			UserID:       "user123",
+			DisplayName:  "Test User",
+			FriendCode:   "ABC-123",
+		},
+		Rank: 1,
 	}
 
 	if entry.Rank != 1 {

@@ -281,10 +281,9 @@ type IntegrationScoreSubmissionRequest struct {
 	Scores       map[string]int `json:"scores"`
 }
 
-type IntegrationScoreSubmissionResponse struct {
-	Success    bool   `json:"success"`
+type IntegrationSolution struct {
+	Message    string `json:"message,omitempty"`
 	SolutionID int    `json:"solution_id"`
-	Message    string `json:"message"`
 }
 
 type IntegrationBestScoreEntry struct {
@@ -298,9 +297,10 @@ type IntegrationBestScoreEntry struct {
 }
 
 type IntegrationBestScoresResponse struct {
-	Scores []IntegrationBestScoreEntry `json:"scores"`
-	Count  int                         `json:"count"`
-	Scope  string                      `json:"scope"`
+	Message string                      `json:"message,omitempty"`
+	Scores  []IntegrationBestScoreEntry `json:"scores"`
+	Count   int                         `json:"count"`
+	Scope   string                      `json:"scope"`
 }
 
 type IntegrationLeaderboardEntry struct {
@@ -321,15 +321,16 @@ type IntegrationPaginationInfo struct {
 }
 
 type IntegrationLeaderboardResponse struct {
+	Message    string                        `json:"message,omitempty"`
 	Scores     []IntegrationLeaderboardEntry `json:"scores"`
 	Count      int                           `json:"count"`
 	Scope      string                        `json:"scope"`
 	Pagination IntegrationPaginationInfo     `json:"pagination"`
 }
 
-func submitIntegrationScore(server *httptest.Server, apiKey string, request IntegrationScoreSubmissionRequest) (*IntegrationScoreSubmissionResponse, error) {
-	var response IntegrationScoreSubmissionResponse
-	err := makeAuthenticatedIntegrationRequest(server, "POST", "/score/submit", apiKey, request, &response)
+func submitIntegrationScore(server *httptest.Server, apiKey string, request IntegrationScoreSubmissionRequest) (*IntegrationSolution, error) {
+	var response IntegrationSolution
+	err := makeAuthenticatedIntegrationRequest(server, "POST", "/api/v1/score/submit", apiKey, request, &response)
 	return &response, err
 }
 
@@ -341,7 +342,7 @@ func getIntegrationBestScores(server *httptest.Server, apiKey string, levels []s
 		params.Set("scope", scope)
 	}
 
-	path := "/score/best?" + params.Encode()
+	path := "/api/v1/score/best?" + params.Encode()
 
 	var response IntegrationBestScoresResponse
 	err := makeAuthenticatedIntegrationRequest(server, "GET", path, apiKey, nil, &response)
@@ -361,7 +362,7 @@ func getIntegrationLeaderboard(server *httptest.Server, apiKey string, levels []
 	params.Set("offset", fmt.Sprintf("%d", offset))
 	params.Set("size", fmt.Sprintf("%d", size))
 
-	path := "/score/leaderboard?" + params.Encode()
+	path := "/api/v1/score/leaderboard?" + params.Encode()
 
 	var response IntegrationLeaderboardResponse
 	err := makeAuthenticatedIntegrationRequest(server, "GET", path, apiKey, nil, &response)

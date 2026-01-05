@@ -22,13 +22,6 @@ type ScoreSubmissionRequest struct {
 	Scores       map[string]int `json:"scores"`        // score type -> score value
 }
 
-// ScoreSubmissionResponse represents the JSON response for score submission
-type ScoreSubmissionResponse struct {
-	Success    bool   `json:"success"`
-	SolutionID int    `json:"solution_id,omitempty"`
-	Message    string `json:"message,omitempty"`
-}
-
 // BestScoreEntry represents a single best score entry
 type BestScoreEntry struct {
 	LevelID      string `json:"level_id"`
@@ -40,38 +33,33 @@ type BestScoreEntry struct {
 	FriendCode   string `json:"friend_code"`
 }
 
+// LeaderboardEntry represents a single leaderboard entry with ranking
+type LeaderboardEntry struct {
+	BestScoreEntry
+	Rank int `json:"rank"`
+}
+
+// Solution represents a submitted solution response
+type Solution struct {
+	ApiResponse
+	SolutionID int `json:"solution_id"`
+}
+
 // BestScoresResponse represents the JSON response for best scores
 type BestScoresResponse struct {
+	ApiResponse
 	Scores []BestScoreEntry `json:"scores"`
 	Count  int              `json:"count"`
 	Scope  string           `json:"scope"`
 }
 
-// LeaderboardEntry represents a single leaderboard entry with ranking
-type LeaderboardEntry struct {
-	Rank         int    `json:"rank"`
-	LevelID      string `json:"level_id"`
-	LevelVersion int    `json:"level_version"`
-	ScoreType    string `json:"score_type"`
-	BestScore    int    `json:"best_score"`
-	UserID       string `json:"user_id"`
-	DisplayName  string `json:"display_name"`
-	FriendCode   string `json:"friend_code"`
-}
-
 // LeaderboardResponse represents the JSON response for leaderboard
 type LeaderboardResponse struct {
+	ApiResponse
 	Scores     []LeaderboardEntry `json:"scores"`
 	Count      int                `json:"count"`
 	Scope      string             `json:"scope"`
 	Pagination PaginationInfo     `json:"pagination"`
-}
-
-// PaginationInfo represents pagination metadata
-type PaginationInfo struct {
-	Offset int `json:"offset"`
-	Size   int `json:"size"`
-	Total  int `json:"total"`
 }
 
 // parseLevelsParameter parses the levels CSV parameter and returns JSON array
@@ -220,10 +208,11 @@ func submitScoreHandler(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(ScoreSubmissionResponse{
-			Success:    true,
+		json.NewEncoder(w).Encode(Solution{
+			ApiResponse: ApiResponse{
+				Message: "Score submitted successfully",
+			},
 			SolutionID: solutionID,
-			Message:    "Score submitted successfully",
 		})
 	}
 }

@@ -173,7 +173,7 @@ func TestGetPendingDisplayNamesHandler_WithRouting(t *testing.T) {
 			mux := setupRoutes(db)
 
 			// Create request
-			req := httptest.NewRequest(http.MethodGet, "/admin/names", nil)
+			req := httptest.NewRequest(http.MethodGet, "/admin/v1/names", nil)
 
 			// Add auth header if needed
 			if tt.hasAuth {
@@ -262,7 +262,7 @@ func TestEvaluateDisplayNameHandler_WithRouting(t *testing.T) {
 		},
 		{
 			name:           "URL route mismatch",
-			userID:         "", // This creates URL "/admin/names/" which hits the fallback route
+			userID:         "", // This creates URL "/admin/v1/names/" which hits the fallback route
 			requestBody:    EvaluateDisplayNameRequest{Approve: true},
 			expectedStatus: http.StatusOK, // The fallback route returns 200 with service info
 			expectedMsg:    "scorefrost",  // Service name from fallback route
@@ -326,7 +326,7 @@ func TestEvaluateDisplayNameHandler_WithRouting(t *testing.T) {
 			}
 
 			// Create request with proper URL for routing
-			url := "/admin/names/" + tt.userID
+			url := "/admin/v1/names/" + tt.userID
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewBuffer(body))
 			req.Header.Set("Content-Type", "application/json")
 
@@ -349,17 +349,17 @@ func TestEvaluateDisplayNameHandler_WithRouting(t *testing.T) {
 			body_str := strings.TrimSpace(rr.Body.String())
 			if tt.expectedStatus == http.StatusOK && tt.userID != "" {
 				// For successful admin responses, check JSON structure
-				var response EvaluateDisplayNameResponse
+				var response User
 				if err := json.NewDecoder(strings.NewReader(body_str)).Decode(&response); err != nil {
 					t.Fatalf("Failed to decode response: %v", err)
 				}
 
-				if response.UserID != tt.userID {
-					t.Errorf("Expected userID %s, got %s", tt.userID, response.UserID)
+				if response.ID != tt.userID {
+					t.Errorf("Expected user ID %s, got %s", tt.userID, response.ID)
 				}
 
-				if response.StatusMessage != tt.expectedMsg {
-					t.Errorf("Expected status message %s, got %s", tt.expectedMsg, response.StatusMessage)
+				if response.Message != tt.expectedMsg {
+					t.Errorf("Expected message %s, got %s", tt.expectedMsg, response.Message)
 				}
 
 				// Verify content-type header
@@ -430,28 +430,33 @@ func TestAdminTypes(t *testing.T) {
 		}
 	})
 
-	t.Run("EvaluateDisplayNameResponse struct", func(t *testing.T) {
-		resp := EvaluateDisplayNameResponse{
-			UserID:        "test-user",
-			DisplayName:   "TestName",
-			Status:        2,
-			StatusMessage: "approved",
+	t.Run("User struct in admin response", func(t *testing.T) {
+		resp := User{
+			ApiResponse: ApiResponse{
+				Message: "approved",
+			},
+			ID:          "test-user",
+			DisplayName: "TestName",
+			FriendCode:  "ABCD-1234",
 		}
 
 		// Test JSON marshaling
 		data, err := json.Marshal(resp)
 		if err != nil {
-			t.Fatalf("Failed to marshal EvaluateDisplayNameResponse: %v", err)
+			t.Fatalf("Failed to marshal User: %v", err)
 		}
 
 		// Test JSON unmarshaling
-		var unmarshaled EvaluateDisplayNameResponse
+		var unmarshaled User
 		if err := json.Unmarshal(data, &unmarshaled); err != nil {
-			t.Fatalf("Failed to unmarshal EvaluateDisplayNameResponse: %v", err)
+			t.Fatalf("Failed to unmarshal User: %v", err)
 		}
 
-		if unmarshaled.StatusMessage != resp.StatusMessage {
-			t.Errorf("Expected StatusMessage %s, got %s", resp.StatusMessage, unmarshaled.StatusMessage)
+		if unmarshaled.Message != resp.Message {
+			t.Errorf("Expected Message %s, got %s", resp.Message, unmarshaled.Message)
+		}
+		if unmarshaled.ID != resp.ID {
+			t.Errorf("Expected ID %s, got %s", resp.ID, unmarshaled.ID)
 		}
 	})
 }

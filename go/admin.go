@@ -41,23 +41,15 @@ type PendingDisplayName struct {
 	DisplayNameStatus  int    `json:"display_name_status"`
 }
 
-// GetPendingDisplayNamesResponse represents the response for GET /admin/names
-type GetPendingDisplayNamesResponse struct {
-	PendingNames []PendingDisplayName `json:"pending_names"`
-	Count        int                  `json:"count"`
-}
-
 // EvaluateDisplayNameRequest represents the request body for PUT /admin/names/{userID}
 type EvaluateDisplayNameRequest struct {
 	Approve bool `json:"approve"`
 }
 
-// EvaluateDisplayNameResponse represents the response for PUT /admin/names/{userID}
-type EvaluateDisplayNameResponse struct {
-	UserID        string `json:"user_id"`
-	DisplayName   string `json:"display_name"`
-	Status        int    `json:"status"`
-	StatusMessage string `json:"status_message"`
+// GetPendingDisplayNamesResponse represents the response for GET /admin/names
+type GetPendingDisplayNamesResponse struct {
+	PendingNames []PendingDisplayName `json:"pending_names"`
+	Count        int                  `json:"count"`
 }
 
 // getPendingDisplayNamesHandler handles GET /admin/names
@@ -163,11 +155,12 @@ func evaluateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Prepare response
-		response := EvaluateDisplayNameResponse{
-			UserID:        userID,
-			DisplayName:   finalDisplayName,
-			Status:        newStatus,
-			StatusMessage: statusMessage,
+		response := User{
+			ApiResponse: ApiResponse{
+				Message: statusMessage,
+			},
+			ID:          userID,
+			DisplayName: finalDisplayName,
 		}
 
 		// Send JSON response

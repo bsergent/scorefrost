@@ -256,7 +256,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ScoreSubmissionResponse'
+                $ref: '#/components/schemas/Solution'
         '400':
           description: Invalid request data
           content:
@@ -460,7 +460,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EvaluateDisplayNameResponse'
+                $ref: '#/components/schemas/GetUserResponse'
         '400':
           description: Invalid request or no pending display name
           content:
@@ -513,32 +513,61 @@ components:
     CreateUserResponse:
       type: object
       properties:
+        message:
+          type: string
+          description: Optional status or informational message
+          example: "User created successfully"
         id:
           type: string
           format: uuid
           description: Unique user identifier
           example: "123e4567-e89b-12d3-a456-426614174000"
-        friend_code:
-          type: string
-          description: Unique 6-character friend code
-          example: "ABC123"
         display_name:
           type: string
           description: Auto-generated display name
           example: "CoolGamer42"
+        friend_code:
+          type: string
+          description: Unique friend code in XXXX-XXXX format
+          example: "ABCD-1234"
+        date_time_created_utc:
+          type: string
+          format: date-time
+          description: UTC timestamp when user was created
+          example: "2023-12-01T10:30:00Z"
+        date_time_active_utc:
+          type: string
+          format: date-time
+          description: UTC timestamp when user was last active
+          example: "2023-12-01T10:30:00Z"
+        game_version:
+          type: string
+          description: Version of the game client
+          example: "1.2.3"
+        play_time_ms:
+          type: integer
+          description: Total play time in milliseconds
+          example: 125000
         api_key:
           type: string
-          description: API key for authentication (only returned once)
+          description: API key for authentication (only returned for new users)
           example: "sk_1234567890abcdef..."
       required:
         - id
         - friend_code
         - display_name
-        - api_key
+        - date_time_created_utc
+        - date_time_active_utc
+        - game_version
+        - play_time_ms
 
     GetUserResponse:
       type: object
       properties:
+        message:
+          type: string
+          description: Optional status or informational message
+          example: "User retrieved successfully"
         id:
           type: string
           format: uuid
@@ -573,6 +602,10 @@ components:
     UpdateDisplayNameResponse:
       type: object
       properties:
+        message:
+          type: string
+          description: Status message
+          example: "Display name updated and pending approval"
         id:
           type: string
           format: uuid
@@ -582,14 +615,15 @@ components:
           type: string
           description: Updated display name
           example: "NewGamerName"
-        message:
+        friend_code:
           type: string
-          description: Status message
-          example: "Display name updated successfully"
+          description: User's friend code
+          example: "ABCD-1234"
       required:
+        - message
         - id
         - display_name
-        - message
+        - friend_code
 
     ScoreSubmissionRequest:
       type: object
@@ -632,23 +666,19 @@ components:
         - solution_hash
         - scores
 
-    ScoreSubmissionResponse:
+    Solution:
       type: object
       properties:
-        success:
-          type: boolean
-          description: Whether submission was successful
-          example: true
+        message:
+          type: string
+          description: Optional status or informational message
+          example: "Score submitted successfully"
         solution_id:
           type: integer
           description: Unique identifier for the submitted solution
           example: 42
-        message:
-          type: string
-          description: Success or error message
-          example: "Score submitted successfully"
       required:
-        - success
+        - solution_id
 
     BestScoreEntry:
       type: object
@@ -695,6 +725,10 @@ components:
     BestScoresResponse:
       type: object
       properties:
+        message:
+          type: string
+          description: Optional status or informational message
+          example: "Best scores retrieved successfully"
         scores:
           type: array
           items:
@@ -788,6 +822,10 @@ components:
     LeaderboardResponse:
       type: object
       properties:
+        message:
+          type: string
+          description: Optional status or informational message
+          example: "Leaderboard retrieved successfully"
         scores:
           type: array
           items:
@@ -843,6 +881,10 @@ components:
     GetPendingDisplayNamesResponse:
       type: object
       properties:
+        message:
+          type: string
+          description: Optional status or informational message
+          example: "Pending display names retrieved successfully"
         pending_names:
           type: array
           items:
@@ -865,33 +907,6 @@ components:
           example: true
       required:
         - approve
-
-    EvaluateDisplayNameResponse:
-      type: object
-      properties:
-        user_id:
-          type: string
-          format: uuid
-          description: User ID
-          example: "123e4567-e89b-12d3-a456-426614174000"
-        display_name:
-          type: string
-          description: Final display name after evaluation
-          example: "ApprovedName"
-        status:
-          type: integer
-          description: Final status code
-          example: 2
-        status_message:
-          type: string
-          description: Result of the evaluation
-          enum: [approved, rejected]
-          example: "approved"
-      required:
-        - user_id
-        - display_name
-        - status
-        - status_message
 
 tags:
   - name: System
