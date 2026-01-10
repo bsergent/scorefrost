@@ -3,8 +3,8 @@
 CREATE TABLE IF NOT EXISTS "user" (
     id UUID PRIMARY KEY,
     friend_code VARCHAR(9) UNIQUE NOT NULL, -- Format: XXXX-XXXX (8 alphanumeric chars + 1 dash)
-    display_name_pending VARCHAR(64),
-    display_name VARCHAR(64),
+    display_name_pending VARCHAR(32),
+    display_name VARCHAR(32),
     display_name_status SMALLINT NOT NULL DEFAULT 0, -- 0=Pending, 1=Approved, 2=Rejected
     api_key_hash VARCHAR(64) NOT NULL,
     date_time_created_utc TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'),

@@ -17,8 +17,8 @@ func setupRoutes(db *sql.DB) *http.ServeMux {
 
 	// User routes
 	mux.HandleFunc("POST /api/v1/user", loginUserHandler(db))
-	mux.HandleFunc("GET /api/v1/user/{id}", getUserHandler(db))
-	mux.HandleFunc("PUT /api/v1/user/{id}/name", authMiddleware(db, updateDisplayNameHandler(db)))
+	mux.HandleFunc("GET /api/v1/user/{user_id}", getUserHandler(db))
+	mux.HandleFunc("PUT /api/v1/user/name", authMiddleware(db, updateDisplayNameHandler(db)))
 
 	// Score routes
 	mux.HandleFunc("POST /api/v1/score/submit", authMiddleware(db, submitScoreHandler(db)))

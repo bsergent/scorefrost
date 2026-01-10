@@ -7,7 +7,7 @@ Content-Type: application/json
 ### Copy the id and api_key from the response above
 
 ### Step 2: Update display name (replace USER_ID and API_KEY)
-PUT http://localhost:8080/api/v1/user/d18bb07f-52f5-4bc1-8f06-ff72eba49fe5/name
+PUT http://localhost:8080/api/v1/user/name
 Authorization: Bearer h94TvWWG1OjTYq1qM7NWcF9swAS+yX8PNpI25tyGlE8=
 Content-Type: application/json
 
@@ -23,7 +23,7 @@ GET http://localhost:8080/api/v1/user/d18bb07f-52f5-4bc1-8f06-ff72eba49fe5
 ###
 
 ### Error case: Missing authorization (should return 401)
-PUT http://localhost:8080/api/v1/user/550e8400-e29b-41d4-a716-446655440000/name
+PUT http://localhost:8080/api/v1/user/name
 Content-Type: application/json
 
 {
@@ -34,7 +34,7 @@ Content-Type: application/json
 
 ### Error case: Trying to update someone else's name (should return 403)
 # First create a user, then try to update a different user's name
-PUT http://localhost:8080/user/00000000-0000-0000-0000-000000000001/name
+PUT http://localhost:8080/api/v1/user/name
 Authorization: Bearer h94TvWWG1OjTYq1qM7NWcF9swAS+yX8PNpI25tyGlE8=
 Content-Type: application/json
 
@@ -45,7 +45,7 @@ Content-Type: application/json
 ###
 
 ### Error case: Empty display name (should return 400)
-PUT http://localhost:8080/user/d18bb07f-52f5-4bc1-8f06-ff72eba49fe5/name
+PUT http://localhost:8080/api/v1/user/name
 Authorization: Bearer h94TvWWG1OjTYq1qM7NWcF9swAS+yX8PNpI25tyGlE8=
 Content-Type: application/json
 
@@ -56,7 +56,7 @@ Content-Type: application/json
 ###
 
 ### Error case: Display name too long (should return 400)
-PUT http://localhost:8080/user/d18bb07f-52f5-4bc1-8f06-ff72eba49fe5/name
+PUT http://localhost:8080/api/v1/user/name
 Authorization: Bearer h94TvWWG1OjTYq1qM7NWcF9swAS+yX8PNpI25tyGlE8=
 Content-Type: application/json
 

@@ -179,21 +179,12 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/user/{id}/name:
+  /api/v1/user/name:
     put:
       summary: Update Display Name
-      description: Updates the user's display name (requires approval for certain names)
+      description: Requests an update to the user's display name. Must be approved to be seen by others. The user ID is obtained from the authenticated user context.
       tags:
         - Users
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: User ID (UUID)
-          schema:
-            type: string
-            format: uuid
-            example: "123e4567-e89b-12d3-a456-426614174000"
       requestBody:
         required: true
         content:
@@ -215,18 +206,6 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '401':
           description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '403':
-          description: User can only update their own display name
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '404':
-          description: User not found
           content:
             application/json:
               schema:
@@ -591,10 +570,10 @@ components:
       properties:
         display_name:
           type: string
-          description: New display name (3-20 characters, alphanumeric plus spaces, underscores, hyphens)
+          description: New display name (3-32 characters, alphanumeric plus spaces, underscores, hyphens)
           minLength: 3
-          maxLength: 20
-          pattern: '^[a-zA-Z0-9 _-]+$'
+          maxLength: 32
+          pattern: '^[a-zA-Z0-9 \-_]+$'
           example: "NewGamerName"
       required:
         - display_name

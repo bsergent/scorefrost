@@ -10,6 +10,7 @@ import (
 	"log"
 	"math/big"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
@@ -145,7 +146,7 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 func getUserHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Extract identifier from URL path parameter (Go 1.22+)
-		identifier := r.PathValue("id")
+		identifier := r.PathValue("user_id")
 
 		if identifier == "" {
 			http.Error(w, "User ID or friend code is required", http.StatusBadRequest)
@@ -275,26 +276,6 @@ func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Extract target user ID from URL path parameter (Go 1.22+)
-		targetUserID := r.PathValue("id")
-
-		if targetUserID == "" {
-			http.Error(w, "User ID is required", http.StatusBadRequest)
-			return
-		}
-
-		// Validate UUID format
-		if _, err := uuid.Parse(targetUserID); err != nil {
-			http.Error(w, "Invalid user ID format", http.StatusBadRequest)
-			return
-		}
-
-		// Verify the authenticated user is updating their own name
-		if authenticatedUserID != targetUserID {
-			http.Error(w, "Forbidden: You can only update your own display name", http.StatusForbidden)
-			return
-		}
-
 		// Parse request body
 		var req UpdateDisplayNameRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -303,15 +284,21 @@ func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 		}
 		defer r.Body.Close()
 
-		// Validate display name
+		// Validate display name length
 		newDisplayName := strings.TrimSpace(req.DisplayName)
-		if newDisplayName == "" {
-			http.Error(w, "Display name cannot be empty", http.StatusBadRequest)
+		const minLength = 3
+		const maxLength = 32
+		if len(newDisplayName) < minLength || len(newDisplayName) > maxLength {
+			http.Error(w,
+				fmt.Sprintf("Display name must be between %d and %d characters", minLength, maxLength),
+				http.StatusBadRequest)
 			return
 		}
 
-		if len(newDisplayName) > 64 {
-			http.Error(w, "Display name must be 64 characters or less", http.StatusBadRequest)
+		// Validate display name characters
+		validChars := regexp.MustCompile(`^[a-zA-Z0-9 \-_]+$`)
+		if !validChars.MatchString(newDisplayName) {
+			http.Error(w, "Display name can only contain letters, numbers, spaces, hyphens, and underscores", http.StatusBadRequest)
 			return
 		}
 
