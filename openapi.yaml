@@ -230,12 +230,12 @@ paths:
             schema:
               $ref: '#/components/schemas/ScoreSubmissionRequest'
       responses:
-        '200':
+        '201':
           description: Score submitted successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Solution'
+                $ref: '#/components/schemas/ApiResponse'
         '400':
           description: Invalid request data
           content:
@@ -479,6 +479,14 @@ components:
       description: API key obtained from user creation
 
   schemas:
+    ApiResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Optional status or informational message
+          example: "Score submitted successfully"
+
     ErrorResponse:
       type: object
       properties:

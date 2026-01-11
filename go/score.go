@@ -126,6 +126,7 @@ func submitScoreHandler(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
+		defer r.Body.Close()
 
 		// Validate required fields
 		if req.LevelID == "" {
@@ -208,11 +209,8 @@ func submitScoreHandler(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(Solution{
-			ApiResponse: ApiResponse{
-				Message: "Score submitted successfully",
-			},
-			SolutionID: solutionID,
+		json.NewEncoder(w).Encode(ApiResponse{
+			Message: "Score submitted successfully",
 		})
 	}
 }

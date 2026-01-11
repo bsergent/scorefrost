@@ -298,7 +298,9 @@ func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 		// Validate display name characters
 		validChars := regexp.MustCompile(`^[a-zA-Z0-9 \-_]+$`)
 		if !validChars.MatchString(newDisplayName) {
-			http.Error(w, "Display name can only contain letters, numbers, spaces, hyphens, and underscores", http.StatusBadRequest)
+			http.Error(w,
+				"Display name can only contain letters, numbers, spaces, hyphens, and underscores",
+				http.StatusBadRequest)
 			return
 		}
 
@@ -312,7 +314,9 @@ func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 
 		if err != nil {
 			log.Printf("Failed to update display name: %v", err)
-			http.Error(w, "Failed to update display name", http.StatusInternalServerError)
+			http.Error(w,
+				"Failed to update display name",
+				http.StatusInternalServerError)
 			return
 		}
 

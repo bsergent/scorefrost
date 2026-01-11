@@ -17,6 +17,23 @@ Authorization: Bearer {{dev_api_key}}
   }
 }
 
+### Submit Score
+POST {{host}}/api/v1/score/submit
+Content-Type: application/json
+Authorization: Bearer Bf00rff45ppEUm9actOzSHpnW8NaQjWtwO460x34CoY=
+
+{
+  "level_id": "level_001",
+  "level_version": 1,
+  "game_version": "0.1.0",
+  "scores": {
+    "time_ms": 15420,
+    "stars": 3
+  },
+  "solution": "cmVwcm9kdWN0aW9uIHN0ZXBz",
+  "solution_hash": "d6dbe6a9b25f15b1daff6fa1b36f0c36b93def2d375dbeab897cfae7c198cc61"
+}
+
 ### Variables
 @host = http://localhost:8080
 @dev_api_key = dev_key_change_in_production

@@ -21,7 +21,7 @@ func setupRoutes(db *sql.DB) *http.ServeMux {
 	mux.HandleFunc("PUT /api/v1/user/name", authMiddleware(db, updateDisplayNameHandler(db)))
 
 	// Score routes
-	mux.HandleFunc("POST /api/v1/score/submit", authMiddleware(db, submitScoreHandler(db)))
+	mux.HandleFunc("PUT /api/v1/score", authMiddleware(db, submitScoreHandler(db)))
 	mux.HandleFunc("GET /api/v1/score/best", authMiddleware(db, bestScoresHandler(db)))
 	mux.HandleFunc("GET /api/v1/score/leaderboard", authMiddleware(db, leaderboardHandler(db)))
 
