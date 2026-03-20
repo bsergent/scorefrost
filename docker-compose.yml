@@ -24,5 +24,20 @@ services:
     depends_on:
       - db
 
+  migrate:
+    image: migrate/migrate:4
+    env_file: .env
+    volumes:
+      - ./sql/migrations:/migrations:ro
+    entrypoint: ["/bin/sh", "-lc"]
+    command:
+      - >
+        migrate
+        -path=/migrations
+        -database "postgres://${PGUSER}:${PGPASSWORD}@db:${PGPORT}/${PGDB}?sslmode=disable"
+        up
+    depends_on:
+      - db
+
 volumes:
   scorefrost-data:
