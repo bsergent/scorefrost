@@ -34,7 +34,7 @@ services:
       - >
         migrate
         -path=/migrations
-        -database "postgres://${PGUSER}:${PGPASSWORD}@db:${PGPORT}/${PGDB}?sslmode=disable"
+        -database "postgres://$${PGUSER}:$${PGPASSWORD}@db:$${PGPORT}/$${PGDB}?sslmode=disable"
         up
     depends_on:
       - db
