@@ -209,8 +209,11 @@ func submitScoreHandler(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		json.NewEncoder(w).Encode(ApiResponse{
-			Message: "Score submitted successfully",
+		json.NewEncoder(w).Encode(Solution{
+			ApiResponse: ApiResponse{
+				Message: "Score submitted successfully",
+			},
+			SolutionID: solutionID,
 		})
 	}
 }

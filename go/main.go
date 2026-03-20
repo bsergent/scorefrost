@@ -34,9 +34,10 @@ func main() {
 	}
 	defer db.Close()
 
-	// Initialize database schema
-	if err := initializeDatabase(db, "sql"); err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+	// Sync dev user's API key hash from environment variable.
+	// Schema changes are migration-only and must be applied before API startup.
+	if err := syncDevAPIKeyHash(db); err != nil {
+		log.Fatalf("Failed to sync dev user API key: %v", err)
 	}
 
 	// Create rate limiter: 100 requests per minute per IP

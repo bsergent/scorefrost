@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"testing"
 
@@ -47,20 +46,20 @@ func prepareIntegrationDatabase() {
 	}
 	defer db.Close()
 
-	// Drop all existing tables to ensure clean state for integration tests
-	log.Println("Dropping existing database objects for clean integration test state...")
-	dropScript := "../sql/drop_all.sql"
-	if dropSQL, err := os.ReadFile(dropScript); err == nil {
-		if _, err := db.Exec(string(dropSQL)); err != nil {
-			log.Printf("Warning: Failed to drop existing objects: %v", err)
-		}
-	} else {
-		log.Printf("Warning: Could not read %s: %v", dropScript, err)
+	// Reset schema from migration files for long-term compatibility as migrations grow.
+	log.Println("Rolling database schema down via migrations...")
+	if err := applyMigrationsDownAll(db, "../sql/migrations"); err != nil {
+		log.Printf("Warning: Failed to apply down migrations: %v", err)
 	}
 
-	// Initialize database schema for integration tests
-	if err := initializeDatabase(db, "../sql"); err != nil {
-		log.Fatalf("Failed to initialize database schema: %v", err)
+	// Apply database migrations for integration tests
+	if err := applyMigrationsUp(db, "../sql/migrations"); err != nil {
+		log.Fatalf("Failed to apply database migrations: %v", err)
+	}
+
+	// Ensure dev user's API key hash is in sync for admin-related flows.
+	if err := syncDevAPIKeyHash(db); err != nil {
+		log.Fatalf("Failed to sync dev API key hash: %v", err)
 	}
 
 	// Clean up existing test data
@@ -330,7 +329,7 @@ type IntegrationLeaderboardResponse struct {
 
 func submitIntegrationScore(server *httptest.Server, apiKey string, request IntegrationScoreSubmissionRequest) (*IntegrationSolution, error) {
 	var response IntegrationSolution
-	err := makeAuthenticatedIntegrationRequest(server, "POST", "/api/v1/score/submit", apiKey, request, &response)
+	err := makeAuthenticatedIntegrationRequest(server, "PUT", "/api/v1/score", apiKey, request, &response)
 	return &response, err
 }
 

@@ -30,6 +30,16 @@ Stop database
 ## Deploying
 `docker-compose up --build`
 
+## Database Migrations
+
+ScoreFrost now includes versioned SQL migrations in `sql/migrations`.
+
+For production deployments:
+- Apply migrations before starting/upgrading the API
+- Migrations are the only schema authority in both development and production
+
+See [MIGRATIONS.md](MIGRATIONS.md) for commands and baseline adoption steps.
+
 `docker build -t scoreforst:dev .`
 
 `docker-compose up -d` Run the volume with a detached head.
