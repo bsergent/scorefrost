@@ -101,7 +101,7 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 
 		if apiKey == "" {
 			// No API key provided - create new user
-			userFull, err = createNewUser(db)
+			userFull, err = createNewUser(db, req.GameVersion)
 			if err != nil {
 				log.Printf("Failed to create new user: %v", err)
 				http.Error(w, "Failed to create user", http.StatusInternalServerError)
@@ -339,7 +339,7 @@ func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 }
 
 // Helper function to create a new user and return UserFull details
-func createNewUser(db *sql.DB) (*UserFull, error) {
+func createNewUser(db *sql.DB, gameVersion string) (*UserFull, error) {
 	// Generate new UUID for the user
 	userID := uuid.New()
 
@@ -372,11 +372,12 @@ func createNewUser(db *sql.DB) (*UserFull, error) {
 
 		// Try to insert user into database
 		err = db.QueryRow(
-			"SELECT create_user($1, $2, $3, $4)",
+			"SELECT create_user($1, $2, $3, $4, $5)",
 			userID.String(),
 			friendCode,
 			displayName,
 			apiKeyHash,
+			gameVersion,
 		).Scan(&returnedID)
 
 		// If successful, break out of retry loop
