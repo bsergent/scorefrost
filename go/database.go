@@ -11,6 +11,73 @@ import (
 	"strings"
 )
 
+// expectedSchemaVersion returns the highest migration version found in *.up.sql files.
+func expectedSchemaVersion(migrationsDir string) (int64, error) {
+	files, err := filepath.Glob(filepath.Join(migrationsDir, "*.up.sql"))
+	if err != nil {
+		return 0, fmt.Errorf("failed to enumerate migration files: %w", err)
+	}
+	if len(files) == 0 {
+		return 0, fmt.Errorf("no migration files found in %s", migrationsDir)
+	}
+
+	var maxVersion int64
+	for _, path := range files {
+		base := filepath.Base(path)
+		parts := strings.SplitN(base, "_", 2)
+		if len(parts) != 2 {
+			return 0, fmt.Errorf("invalid migration filename format: %s", base)
+		}
+
+		version, err := strconv.ParseInt(parts[0], 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid migration version in filename %s: %w", base, err)
+		}
+		if version > maxVersion {
+			maxVersion = version
+		}
+	}
+
+	return maxVersion, nil
+}
+
+// verifySchemaCompatibility ensures the connected DB schema matches the bundled migration set.
+func verifySchemaCompatibility(db *sql.DB, migrationsDir string) error {
+	expectedVersion, err := expectedSchemaVersion(migrationsDir)
+	if err != nil {
+		return err
+	}
+
+	var schemaMigrationsExists bool
+	err = db.QueryRow(`SELECT to_regclass('public.schema_migrations') IS NOT NULL`).Scan(&schemaMigrationsExists)
+	if err != nil {
+		return fmt.Errorf("failed to check schema_migrations existence: %w", err)
+	}
+	if !schemaMigrationsExists {
+		return fmt.Errorf("schema_migrations table not found; run migrations up to version %d before starting API", expectedVersion)
+	}
+
+	var currentVersion int64
+	var dirty bool
+	err = db.QueryRow(`SELECT version, dirty FROM schema_migrations LIMIT 1`).Scan(&currentVersion, &dirty)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("schema_migrations is empty; run migrations up to version %d before starting API", expectedVersion)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to read schema_migrations state: %w", err)
+	}
+
+	if dirty {
+		return fmt.Errorf("database migration state is dirty at version %d; fix migration state before starting API", currentVersion)
+	}
+
+	if currentVersion != expectedVersion {
+		return fmt.Errorf("database schema version mismatch: database=%d expected=%d; run migrations before starting API", currentVersion, expectedVersion)
+	}
+
+	return nil
+}
+
 // syncDevAPIKeyHash updates the dev user's API key hash from environment variable.
 func syncDevAPIKeyHash(db *sql.DB) error {
 	devAPIKey := os.Getenv("DEV_API_KEY")

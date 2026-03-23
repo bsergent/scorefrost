@@ -34,6 +34,10 @@ func main() {
 	}
 	defer db.Close()
 
+	if err := verifySchemaCompatibility(db, "./sql/migrations"); err != nil {
+		log.Fatalf("Database schema check failed: %v", err)
+	}
+
 	// Sync dev user's API key hash from environment variable.
 	// Schema changes are migration-only and must be applied before API startup.
 	if err := syncDevAPIKeyHash(db); err != nil {
