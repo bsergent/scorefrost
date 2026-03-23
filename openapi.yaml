@@ -31,7 +31,7 @@ info:
     - `striping` - Coverage/striping percentage (higher is better) 
     - `fuel` - Fuel consumption (lower is better)
     - `stars` - Star rating achieved (higher is better)
-  version: 1.0.0
+  version: 0.2.0
   contact:
     name: ScoreFrost API Support
   license:
@@ -107,7 +107,7 @@ paths:
         '301':
           description: Redirect to Swagger UI
 
-  /api/v1/openapi.json:
+  /api/v2/openapi.json:
     get:
       summary: OpenAPI Specification
       description: Returns the OpenAPI specification in JSON format
@@ -122,7 +122,7 @@ paths:
               schema:
                 type: object
 
-  /api/v1/user:
+  /api/v2/user:
     post:
       summary: Create User
       description: Creates a new user with auto-generated credentials
@@ -143,7 +143,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/user/{id}:
+  /api/v2/user/{id}:
     get:
       summary: Get User
       description: Retrieves user information by ID
@@ -179,7 +179,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/user/name:
+  /api/v2/user/name:
     put:
       summary: Update Display Name
       description: Requests an update to the user's display name. Must be approved to be seen by others. The user ID is obtained from the authenticated user context.
@@ -217,7 +217,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/score/submit:
+  /api/v2/score/submit:
     post:
       summary: Submit Score
       description: Submits a new score for a level
@@ -255,7 +255,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/score/best:
+  /api/v2/score/best:
     get:
       summary: Get Best Scores
       description: Retrieves the authenticated user's best scores
@@ -306,7 +306,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/score/leaderboard:
+  /api/v2/score/leaderboard:
     get:
       summary: Get Leaderboard
       description: Retrieves leaderboard with top scores per level and score type
@@ -376,7 +376,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /admin/v1/names:
+  /admin/v2/names:
     get:
       summary: Get Pending Display Names
       description: Retrieves all pending display name changes requiring admin approval
@@ -410,7 +410,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /admin/v1/names/{user_id}:
+  /admin/v2/names/{user_id}:
     put:
       summary: Evaluate Display Name
       description: Approve or reject a pending display name change

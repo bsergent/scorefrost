@@ -72,12 +72,12 @@ func convertToJSONCompatible(i any) any {
 
 // setupDocsRoutes adds documentation endpoints to the mux
 func setupDocsRoutes(mux *http.ServeMux) {
-	// Serve OpenAPI spec at /api/v1/openapi.json
-	mux.HandleFunc("GET /api/v1/openapi.json", serveOpenAPISpec)
+	// Serve OpenAPI spec at {APIBasePath}/openapi.json
+	mux.HandleFunc("GET "+APIBasePath+"/openapi.json", serveOpenAPISpec)
 
 	// Serve Swagger UI at /docs
 	mux.Handle("/docs/", httpSwagger.Handler(
-		httpSwagger.URL("/api/v1/openapi.json"), // Point to our versioned OpenAPI spec
+		httpSwagger.URL(APIBasePath+"/openapi.json"), // Point to our versioned OpenAPI spec
 		httpSwagger.DocExpansion("list"),
 		httpSwagger.DeepLinking(true),
 	))

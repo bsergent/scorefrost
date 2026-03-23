@@ -54,7 +54,7 @@ type UserFull struct {
 	APIKey             string `json:"api_key,omitempty"` // Only included for new users
 }
 
-// LoginRequest represents the JSON request body for POST /api/v1/user (login/create)
+// LoginRequest represents the JSON request body for POST {APIBasePath}/user (login/create)
 type LoginRequest struct {
 	GameID      string `json:"game_id"`
 	GameVersion string `json:"game_version"`
@@ -65,7 +65,7 @@ type UpdateDisplayNameRequest struct {
 	DisplayName string `json:"display_name"`
 }
 
-// loginUserHandler handles POST /api/v1/user requests (login/create)
+// loginUserHandler handles POST {APIBasePath}/user requests (login/create)
 func loginUserHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Parse request body

@@ -1,6 +1,6 @@
 ### Approve a pending display name (requires dev user authentication)
 ### Replace {user_id} with the actual user UUID
-PUT http://localhost:8080/admin/v1/names/REPLACE_WITH_USER_ID
+PUT {{host}}/admin/{{admin_api_version}}/names/REPLACE_WITH_USER_ID
 Authorization: Bearer dev_key_change_in_production
 Content-Type: application/json
 
@@ -12,10 +12,14 @@ Content-Type: application/json
 
 ### Reject a pending display name (requires dev user authentication)
 ### Replace {user_id} with the actual user UUID
-PUT http://localhost:8080/admin/v1/names/REPLACE_WITH_USER_ID
+PUT {{host}}/admin/{{admin_api_version}}/names/REPLACE_WITH_USER_ID
 Authorization: Bearer dev_key_change_in_production
 Content-Type: application/json
 
 {
   "approve": false
 }
+
+### Variables
+@host = http://localhost:8080
+@admin_api_version = v2

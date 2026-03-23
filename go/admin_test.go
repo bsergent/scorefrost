@@ -173,7 +173,7 @@ func TestGetPendingDisplayNamesHandler_WithRouting(t *testing.T) {
 			mux := setupRoutes(db)
 
 			// Create request
-			req := httptest.NewRequest(http.MethodGet, "/admin/v1/names", nil)
+			req := httptest.NewRequest(http.MethodGet, AdminAPIBasePath+"/names", nil)
 
 			// Add auth header if needed
 			if tt.hasAuth {
@@ -262,7 +262,7 @@ func TestEvaluateDisplayNameHandler_WithRouting(t *testing.T) {
 		},
 		{
 			name:           "URL route mismatch",
-			userID:         "", // This creates URL "/admin/v1/names/" which hits the fallback route
+			userID:         "", // This creates URL "{AdminAPIBasePath}/names/" which hits the fallback route
 			requestBody:    EvaluateDisplayNameRequest{Approve: true},
 			expectedStatus: http.StatusOK, // The fallback route returns 200 with service info
 			expectedMsg:    "scorefrost",  // Service name from fallback route
@@ -326,7 +326,7 @@ func TestEvaluateDisplayNameHandler_WithRouting(t *testing.T) {
 			}
 
 			// Create request with proper URL for routing
-			url := "/admin/v1/names/" + tt.userID
+			url := AdminAPIBasePath + "/names/" + tt.userID
 			req := httptest.NewRequest(http.MethodPut, url, bytes.NewBuffer(body))
 			req.Header.Set("Content-Type", "application/json")
 

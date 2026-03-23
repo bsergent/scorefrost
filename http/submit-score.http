@@ -1,5 +1,5 @@
 ### Submit Score
-POST {{host}}/api/v1/score/submit
+POST {{host}}/api/{{api_version}}/score/submit
 Content-Type: application/json
 Authorization: Bearer {{dev_api_key}}
 
@@ -18,7 +18,7 @@ Authorization: Bearer {{dev_api_key}}
 }
 
 ### Submit Score
-POST {{host}}/api/v1/score/submit
+POST {{host}}/api/{{api_version}}/score/submit
 Content-Type: application/json
 Authorization: Bearer Bf00rff45ppEUm9actOzSHpnW8NaQjWtwO460x34CoY=
 
@@ -36,4 +36,5 @@ Authorization: Bearer Bf00rff45ppEUm9actOzSHpnW8NaQjWtwO460x34CoY=
 
 ### Variables
 @host = http://localhost:8080
+@api_version = v2
 @dev_api_key = dev_key_change_in_production

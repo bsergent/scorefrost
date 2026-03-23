@@ -146,7 +146,7 @@ func createIntegrationTestUser(baseURL string) (*IntegrationTestUser, error) {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := http.Post(baseURL+"/api/v1/user", "application/json", bytes.NewBuffer(jsonData))
+	resp, err := http.Post(baseURL+APIBasePath+"/user", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func authenticateIntegrationTestUser(baseURL string, apiKey string) (*Integratio
 	}
 
 	// Create HTTP request with Authorization header
-	req, err := http.NewRequest("POST", baseURL+"/api/v1/user", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", baseURL+APIBasePath+"/user", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +329,7 @@ type IntegrationLeaderboardResponse struct {
 
 func submitIntegrationScore(server *httptest.Server, apiKey string, request IntegrationScoreSubmissionRequest) (*IntegrationSolution, error) {
 	var response IntegrationSolution
-	err := makeAuthenticatedIntegrationRequest(server, "PUT", "/api/v1/score", apiKey, request, &response)
+	err := makeAuthenticatedIntegrationRequest(server, "PUT", APIBasePath+"/score", apiKey, request, &response)
 	return &response, err
 }
 
@@ -341,7 +341,7 @@ func getIntegrationBestScores(server *httptest.Server, apiKey string, levels []s
 		params.Set("scope", scope)
 	}
 
-	path := "/api/v1/score/best?" + params.Encode()
+	path := APIBasePath + "/score/best?" + params.Encode()
 
 	var response IntegrationBestScoresResponse
 	err := makeAuthenticatedIntegrationRequest(server, "GET", path, apiKey, nil, &response)
@@ -361,7 +361,7 @@ func getIntegrationLeaderboard(server *httptest.Server, apiKey string, levels []
 	params.Set("offset", fmt.Sprintf("%d", offset))
 	params.Set("size", fmt.Sprintf("%d", size))
 
-	path := "/api/v1/score/leaderboard?" + params.Encode()
+	path := APIBasePath + "/score/leaderboard?" + params.Encode()
 
 	var response IntegrationLeaderboardResponse
 	err := makeAuthenticatedIntegrationRequest(server, "GET", path, apiKey, nil, &response)
