@@ -22,8 +22,18 @@ $$ LANGUAGE plpgsql;
 
 -- Migrate solution.id primary key from SERIAL/INTEGER to UUIDv7 and update score FK.
 
--- Ensure cryptographic byte generation is available.
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+-- Ensure extension objects live in a dedicated schema.
+CREATE SCHEMA IF NOT EXISTS ext;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pgcrypto') THEN
+        ALTER EXTENSION pgcrypto SET SCHEMA ext;
+    ELSE
+        CREATE EXTENSION pgcrypto WITH SCHEMA ext;
+    END IF;
+END;
+$$;
 
 -- UUIDv7 generator compatible with PostgreSQL 15.
 CREATE OR REPLACE FUNCTION generate_uuid_v7()
@@ -35,7 +45,7 @@ DECLARE
 BEGIN
     -- Unix timestamp in milliseconds (48 most-significant bits in UUIDv7).
     v_unix_ts_ms := FLOOR(EXTRACT(EPOCH FROM clock_timestamp()) * 1000);
-    v_random := gen_random_bytes(10);
+    v_random := ext.gen_random_bytes(10);
     v_uuid_bytes := E'\\x00000000000000000000000000000000'::BYTEA;
 
     -- Timestamp bytes (big-endian, bytes 0..5).

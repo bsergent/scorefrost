@@ -475,6 +475,10 @@ $$ LANGUAGE plpgsql;
 -- Remove UUIDv7 generator helper.
 DROP FUNCTION IF EXISTS generate_uuid_v7();
 
+-- Remove extension and dedicated extension schema introduced by the up migration.
+DROP EXTENSION IF EXISTS pgcrypto;
+DROP SCHEMA IF EXISTS ext;
+
 -- Revert create_user signature.
 DROP FUNCTION IF EXISTS create_user(UUID, VARCHAR(9), VARCHAR(64), VARCHAR(64), VARCHAR(32));
 
