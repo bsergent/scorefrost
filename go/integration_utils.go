@@ -282,7 +282,7 @@ type IntegrationScoreSubmissionRequest struct {
 
 type IntegrationSolution struct {
 	Message    string `json:"message,omitempty"`
-	SolutionID int    `json:"solution_id"`
+	SolutionID string `json:"solution_id"`
 }
 
 type IntegrationBestScoreEntry struct {

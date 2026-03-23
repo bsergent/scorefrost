@@ -55,7 +55,7 @@ Currently supported score types:
 ```json
 {
   "success": true,
-  "solution_id": 123,
+  "solution_id": "0195b031-cf3f-7bf7-8f72-c6f8ef9db41c",
   "message": "Score submitted successfully"
 }
 ```

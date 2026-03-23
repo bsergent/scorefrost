@@ -661,9 +661,10 @@ components:
           description: Optional status or informational message
           example: "Score submitted successfully"
         solution_id:
-          type: integer
+          type: string
+          format: uuid
           description: Unique identifier for the submitted solution
-          example: 42
+          example: "0195b031-cf3f-7bf7-8f72-c6f8ef9db41c"
       required:
         - solution_id
 

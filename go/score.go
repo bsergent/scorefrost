@@ -42,7 +42,7 @@ type LeaderboardEntry struct {
 // Solution represents a submitted solution response
 type Solution struct {
 	ApiResponse
-	SolutionID int `json:"solution_id"`
+	SolutionID string `json:"solution_id"`
 }
 
 // BestScoresResponse represents the JSON response for best scores
@@ -187,7 +187,7 @@ func submitScoreHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Call stored procedure to submit solution with scores
-		var solutionID int
+		var solutionID string
 		err = db.QueryRow(`
 			SELECT submit_solution_with_scores($1, $2, $3, $4, $5, $6, $7)
 		`, userID, req.LevelID, req.LevelVersion, req.GameVersion, req.Solution, 1, string(scoresJSONBytes)).
@@ -204,7 +204,7 @@ func submitScoreHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		log.Printf("Score submitted successfully: solution_id=%d, user=%s, level=%s",
+		log.Printf("Score submitted successfully: solution_id=%s, user=%s, level=%s",
 			solutionID, userID, req.LevelID)
 
 		w.Header().Set("Content-Type", "application/json")

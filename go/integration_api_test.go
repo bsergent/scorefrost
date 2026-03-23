@@ -5,6 +5,8 @@ package main
 import (
 	"net/http/httptest"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 // Integration tests for ScoreFrost API
@@ -115,8 +117,10 @@ func TestIntegrationScoreSubmission(t *testing.T) {
 	}
 
 	// Verify response
-	if response.SolutionID <= 0 {
-		t.Error("Invalid solution ID returned")
+	if response.SolutionID == "" {
+		t.Error("Empty solution ID returned")
+	} else if _, err := uuid.Parse(response.SolutionID); err != nil {
+		t.Errorf("Invalid UUID solution ID returned: %s", response.SolutionID)
 	}
 
 	// Submit a better score for second user
@@ -132,8 +136,10 @@ func TestIntegrationScoreSubmission(t *testing.T) {
 		t.Fatalf("Failed to submit better score: %v", err)
 	}
 
-	if betterResponse.SolutionID <= 0 {
-		t.Error("Invalid solution ID returned for better score")
+	if betterResponse.SolutionID == "" {
+		t.Error("Empty solution ID returned for better score")
+	} else if _, err := uuid.Parse(betterResponse.SolutionID); err != nil {
+		t.Errorf("Invalid UUID solution ID returned for better score: %s", betterResponse.SolutionID)
 	}
 }
 
