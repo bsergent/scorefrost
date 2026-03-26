@@ -127,30 +127,35 @@ DECLARE
     v_where_conditions TEXT[];
     v_final_where TEXT;
 BEGIN
-    FOR v_level_record IN SELECT * FROM json_array_elements(p_levels)
-    LOOP
-        v_level_id := v_level_record->>'level_id';
-        v_level_version := (v_level_record->>'level_version')::INTEGER;
+    IF p_levels IS NULL THEN
+        -- No levels specified: match all levels at their latest version
+        v_final_where := 's.level_version = (SELECT MAX(s2.level_version) FROM solution s2 WHERE s2.level_id = s.level_id)';
+    ELSE
+        FOR v_level_record IN SELECT * FROM json_array_elements(p_levels)
+        LOOP
+            v_level_id := v_level_record->>'level_id';
+            v_level_version := (v_level_record->>'level_version')::INTEGER;
 
-        IF v_level_version = -1 THEN
-            v_where_conditions := array_append(v_where_conditions,
-                format('(s.level_id = %L AND s.level_version = (
-                    SELECT MAX(s2.level_version)
-                    FROM solution s2
-                    JOIN score sc2 ON s2.id = sc2.solution_id
-                    WHERE s2.level_id = %L
-                ))', v_level_id, v_level_id));
-        ELSE
-            v_where_conditions := array_append(v_where_conditions,
-                format('(s.level_id = %L AND s.level_version = %s)', v_level_id, v_level_version));
+            IF v_level_version = -1 THEN
+                v_where_conditions := array_append(v_where_conditions,
+                    format('(s.level_id = %L AND s.level_version = (
+                        SELECT MAX(s2.level_version)
+                        FROM solution s2
+                        JOIN score sc2 ON s2.id = sc2.solution_id
+                        WHERE s2.level_id = %L
+                    ))', v_level_id, v_level_id));
+            ELSE
+                v_where_conditions := array_append(v_where_conditions,
+                    format('(s.level_id = %L AND s.level_version = %s)', v_level_id, v_level_version));
+            END IF;
+        END LOOP;
+
+        IF array_length(v_where_conditions, 1) = 0 THEN
+            RAISE EXCEPTION 'No valid level specifications provided';
         END IF;
-    END LOOP;
 
-    IF array_length(v_where_conditions, 1) = 0 THEN
-        RAISE EXCEPTION 'No valid level specifications provided';
+        v_final_where := array_to_string(v_where_conditions, ' OR ');
     END IF;
-
-    v_final_where := array_to_string(v_where_conditions, ' OR ');
 
     CASE p_scope
         WHEN 'personal' THEN

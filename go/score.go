@@ -253,12 +253,6 @@ func bestScoresHandler(db *sql.DB) http.HandlerFunc {
 		levelsParam := r.URL.Query().Get("levels")
 		scope := r.URL.Query().Get("scope")
 
-		// Validate levels parameter
-		if levelsParam == "" {
-			http.Error(w, "Levels parameter is required", http.StatusBadRequest)
-			return
-		}
-
 		// Default scope to global if not specified
 		if scope == "" {
 			scope = "global"
@@ -276,25 +270,28 @@ func bestScoresHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Parse levels parameter and build JSON array
-		levelsJSON, err := parseLevelsParameter(levelsParam)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+		// Parse levels parameter if provided, otherwise pass NULL for all levels
+		var levelsArg interface{}
+		if levelsParam != "" {
+			levelsJSON, err := parseLevelsParameter(levelsParam)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 
-		// Convert levels to JSON
-		levelsJSONBytes, err := json.Marshal(levelsJSON)
-		if err != nil {
-			log.Printf("Failed to marshal levels to JSON: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
+			levelsJSONBytes, err := json.Marshal(levelsJSON)
+			if err != nil {
+				log.Printf("Failed to marshal levels to JSON: %v", err)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				return
+			}
+			levelsArg = string(levelsJSONBytes)
 		}
 
 		// Call stored procedure to get best scores
 		rows, err := db.Query(`
 			SELECT * FROM get_best_scores($1, $2, $3)
-		`, userID, string(levelsJSONBytes), scope)
+		`, userID, levelsArg, scope)
 
 		if err != nil {
 			log.Printf("Failed to get best scores: %v", err)

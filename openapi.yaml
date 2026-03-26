@@ -267,7 +267,8 @@ paths:
           required: false
           description: |
             Comma-separated list of level specifications in format "level_id" or "level_id.version".
-            If version is omitted, the latest version is used.
+            If version is omitted for a level, the latest version is used.
+            If this parameter is omitted entirely, returns best scores across all levels at their latest versions.
             Examples: "level1", "level1.2", "level1,level2.1,level3"
           schema:
             type: string
