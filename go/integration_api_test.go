@@ -258,6 +258,204 @@ func TestIntegrationBestScoresPersonal(t *testing.T) {
 	assertIntegrationScoreExists(t, response.Scores, "test_level_003", "fuel", 60)
 }
 
+func TestIntegrationBestScoresPersonalWithoutLevelsExcludesOtherUsers(t *testing.T) {
+	db := mustConnectToIntegrationDB()
+	defer db.Close()
+
+	server := httptest.NewServer(setupTestRoutes(db))
+	defer server.Close()
+
+	solution := "U29sdXRpb24gZm9yIHBlcnNvbmFsIHNjb3BlIHRlc3Q=" // "Solution for personal scope test" in base64
+	solutionHash := calculateIntegrationSolutionHash(solution)
+
+	userOneLevelA := IntegrationScoreSubmissionRequest{
+		Solution:     solution,
+		SolutionHash: solutionHash,
+		LevelID:      "pers_best_a",
+		LevelVersion: 1,
+		GameVersion:  "1.0.0",
+		Scores: map[string]int{
+			"time_ms": 24000,
+			"stars":   2,
+		},
+	}
+
+	userOneLevelB := IntegrationScoreSubmissionRequest{
+		Solution:     solution,
+		SolutionHash: solutionHash,
+		LevelID:      "pers_best_b",
+		LevelVersion: 3,
+		GameVersion:  "1.0.0",
+		Scores: map[string]int{
+			"fuel":     55,
+			"striping": 85,
+		},
+	}
+
+	userTwoBetterLevelA := IntegrationScoreSubmissionRequest{
+		Solution:     solution,
+		SolutionHash: solutionHash,
+		LevelID:      "pers_best_a",
+		LevelVersion: 1,
+		GameVersion:  "1.0.0",
+		Scores: map[string]int{
+			"time_ms": 18000,
+			"stars":   4,
+		},
+	}
+
+	userTwoBetterLevelB := IntegrationScoreSubmissionRequest{
+		Solution:     solution,
+		SolutionHash: solutionHash,
+		LevelID:      "pers_best_b",
+		LevelVersion: 3,
+		GameVersion:  "1.0.0",
+		Scores: map[string]int{
+			"fuel":     40,
+			"striping": 97,
+		},
+	}
+
+	for _, request := range []IntegrationScoreSubmissionRequest{userOneLevelA, userOneLevelB} {
+		if _, err := submitIntegrationScore(server, integrationConfig.TestAPIKey, request); err != nil {
+			t.Fatalf("Failed to submit user 1 score: %v", err)
+		}
+	}
+
+	for _, request := range []IntegrationScoreSubmissionRequest{userTwoBetterLevelA, userTwoBetterLevelB} {
+		if _, err := submitIntegrationScore(server, integrationConfig.TestAPIKey2, request); err != nil {
+			t.Fatalf("Failed to submit user 2 score: %v", err)
+		}
+	}
+
+	response, err := getIntegrationBestScores(server, integrationConfig.TestAPIKey, nil, "personal")
+	if err != nil {
+		t.Fatalf("Failed to get personal best scores without levels: %v", err)
+	}
+
+	if response.Scope != "personal" {
+		t.Errorf("Expected scope 'personal', got '%s'", response.Scope)
+	}
+
+	assertIntegrationScoreCount(t, response, 4)
+	assertIntegrationScoreExists(t, response.Scores, "pers_best_a", "time_ms", 24000)
+	assertIntegrationScoreExists(t, response.Scores, "pers_best_a", "stars", 2)
+	assertIntegrationScoreExists(t, response.Scores, "pers_best_b", "fuel", 55)
+	assertIntegrationScoreExists(t, response.Scores, "pers_best_b", "striping", 85)
+
+	for _, score := range response.Scores {
+		if score.UserID != integrationConfig.TestUserID {
+			t.Errorf("Expected personal scores only for user %s, got user %s", integrationConfig.TestUserID, score.UserID)
+		}
+		if score.BestScore == 18000 || score.BestScore == 4 || score.BestScore == 40 || score.BestScore == 97 {
+			t.Errorf("Found competing user better score in personal response: %+v", score)
+		}
+	}
+}
+
+func TestIntegrationBestScoresGlobalWithoutLevelsReturnsBestAcrossUsers(t *testing.T) {
+	db := mustConnectToIntegrationDB()
+	defer db.Close()
+
+	server := httptest.NewServer(setupTestRoutes(db))
+	defer server.Close()
+
+	solution := "R2xvYmFsIEJlc3QgVGVzdA==" // "Global Best Test" in base64
+	solutionHash := calculateIntegrationSolutionHash(solution)
+
+	userOneWorseLevelA := IntegrationScoreSubmissionRequest{
+		Solution:     solution,
+		SolutionHash: solutionHash,
+		LevelID:      "glob_best_a",
+		LevelVersion: 2,
+		GameVersion:  "1.0.0",
+		Scores: map[string]int{
+			"time_ms": 30000,
+			"stars":   1,
+		},
+	}
+
+	userOneWorseLevelB := IntegrationScoreSubmissionRequest{
+		Solution:     solution,
+		SolutionHash: solutionHash,
+		LevelID:      "glob_best_b",
+		LevelVersion: 1,
+		GameVersion:  "1.0.0",
+		Scores: map[string]int{
+			"fuel":     70,
+			"striping": 60,
+		},
+	}
+
+	userTwoBetterLevelA := IntegrationScoreSubmissionRequest{
+		Solution:     solution,
+		SolutionHash: solutionHash,
+		LevelID:      "glob_best_a",
+		LevelVersion: 2,
+		GameVersion:  "1.0.0",
+		Scores: map[string]int{
+			"time_ms": 22000,
+			"stars":   3,
+		},
+	}
+
+	userTwoBetterLevelB := IntegrationScoreSubmissionRequest{
+		Solution:     solution,
+		SolutionHash: solutionHash,
+		LevelID:      "glob_best_b",
+		LevelVersion: 1,
+		GameVersion:  "1.0.0",
+		Scores: map[string]int{
+			"fuel":     50,
+			"striping": 80,
+		},
+	}
+
+	for _, request := range []IntegrationScoreSubmissionRequest{userOneWorseLevelA, userOneWorseLevelB} {
+		if _, err := submitIntegrationScore(server, integrationConfig.TestAPIKey, request); err != nil {
+			t.Fatalf("Failed to submit user 1 score: %v", err)
+		}
+	}
+
+	for _, request := range []IntegrationScoreSubmissionRequest{userTwoBetterLevelA, userTwoBetterLevelB} {
+		if _, err := submitIntegrationScore(server, integrationConfig.TestAPIKey2, request); err != nil {
+			t.Fatalf("Failed to submit user 2 score: %v", err)
+		}
+	}
+
+	response, err := getIntegrationBestScores(server, integrationConfig.TestAPIKey, nil, "global")
+	if err != nil {
+		t.Fatalf("Failed to get global best scores without levels: %v", err)
+	}
+
+	if response.Scope != "global" {
+		t.Errorf("Expected scope 'global', got '%s'", response.Scope)
+	}
+
+	// Verify structural integrity: count field matches array length
+	assertIntegrationScoreCount(t, response, len(response.Scores))
+
+	// User 2's better scores should appear and be attributed to them
+	assertIntegrationScoreExists(t, response.Scores, "glob_best_a", "time_ms", 22000)
+	assertIntegrationScoreExists(t, response.Scores, "glob_best_a", "stars", 3)
+	assertIntegrationScoreExists(t, response.Scores, "glob_best_b", "fuel", 50)
+	assertIntegrationScoreExists(t, response.Scores, "glob_best_b", "striping", 80)
+
+	assertIntegrationScoreUser(t, response.Scores, "glob_best_a", "time_ms", integrationConfig.TestUserID2)
+	assertIntegrationScoreUser(t, response.Scores, "glob_best_a", "stars", integrationConfig.TestUserID2)
+	assertIntegrationScoreUser(t, response.Scores, "glob_best_b", "fuel", integrationConfig.TestUserID2)
+	assertIntegrationScoreUser(t, response.Scores, "glob_best_b", "striping", integrationConfig.TestUserID2)
+
+	// User 1's worse scores should not appear for those levels
+	for _, score := range response.Scores {
+		if score.LevelID == "glob_best_a" || score.LevelID == "glob_best_b" {
+			if score.UserID == integrationConfig.TestUserID {
+				t.Errorf("Expected user 1's scores to be beaten by user 2, but found user 1's entry in global response: %+v", score)
+			}
+		}
+	}
+}
+
 func TestIntegrationBestScoresMultipleLevels(t *testing.T) {
 	db := mustConnectToIntegrationDB()
 	defer db.Close()

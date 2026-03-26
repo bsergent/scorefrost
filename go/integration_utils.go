@@ -336,12 +336,17 @@ func submitIntegrationScore(server *httptest.Server, apiKey string, request Inte
 func getIntegrationBestScores(server *httptest.Server, apiKey string, levels []string, scope string) (*IntegrationBestScoresResponse, error) {
 	// Build query parameters
 	params := url.Values{}
-	params.Set("levels", strings.Join(levels, ","))
+	if len(levels) > 0 {
+		params.Set("levels", strings.Join(levels, ","))
+	}
 	if scope != "" {
 		params.Set("scope", scope)
 	}
 
-	path := APIBasePath + "/score/best?" + params.Encode()
+	path := APIBasePath + "/score/best"
+	if encoded := params.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
 
 	var response IntegrationBestScoresResponse
 	err := makeAuthenticatedIntegrationRequest(server, "GET", path, apiKey, nil, &response)
