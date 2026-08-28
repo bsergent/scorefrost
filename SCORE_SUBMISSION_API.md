@@ -17,7 +17,7 @@ Submits a player's solution and scores for a specific level.
   "scores": {                     // Map of score type to score value
     "time": 12500,               // Time in milliseconds (lower is better)
     "striping": 85,              // Striping score (higher is better)
-    "fuel": 750,                 // Fuel consumed (lower is better)
+    "fuel_rem": 750,             // Fuel remaining (higher is better)
     "stars": 3                   // Stars earned (higher is better)
   }
 }
@@ -46,7 +46,7 @@ go run utils/hash-util.go SGVsbG8gV29ybGQ= your_secret_salt_change_in_production
 Currently supported score types:
 - `time` - Completion time in milliseconds (lower is better)
 - `striping` - Striping optimization score (higher is better)  
-- `fuel` - Fuel consumption (lower is better)
+- `fuel_rem` - Fuel remaining (higher is better)
 - `stars` - Stars earned (higher is better)
 
 ### Response

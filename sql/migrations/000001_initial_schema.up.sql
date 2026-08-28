@@ -90,7 +90,7 @@ INSERT INTO score_type (id, display_name, higher_is_better)
 VALUES
     ('time_ms', 'Time (Milliseconds)', FALSE),
     ('striping', 'Striping', TRUE),
-    ('fuel_remaining', 'Fuel Remaining', TRUE),
+    ('fuel_rem', 'Fuel Remaining', TRUE),
     ('stars', 'Stars', TRUE)
 ON CONFLICT (id) DO NOTHING;
 

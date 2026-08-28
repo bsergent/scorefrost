@@ -106,7 +106,7 @@ func TestIntegrationScoreSubmission(t *testing.T) {
 		Scores: map[string]int{
 			"time_ms":  15000,
 			"striping": 8,
-			"fuel":     45,
+			"fuel_rem": 45,
 		},
 	}
 
@@ -128,7 +128,7 @@ func TestIntegrationScoreSubmission(t *testing.T) {
 	betterRequest.Scores = map[string]int{
 		"time_ms":  12000,
 		"striping": 10,
-		"fuel":     35,
+		"fuel_rem": 55,
 	}
 
 	betterResponse, err := submitIntegrationScore(server, integrationConfig.TestAPIKey2, betterRequest)
@@ -225,7 +225,7 @@ func TestIntegrationBestScoresPersonal(t *testing.T) {
 		GameVersion:  "1.0.0",
 		Scores: map[string]int{
 			"time_ms": 25000,
-			"fuel":    60,
+			"fuel_rem": 60,
 		},
 	}
 
@@ -255,7 +255,7 @@ func TestIntegrationBestScoresPersonal(t *testing.T) {
 	}
 
 	assertIntegrationScoreExists(t, response.Scores, "test_level_003", "time_ms", 25000)
-	assertIntegrationScoreExists(t, response.Scores, "test_level_003", "fuel", 60)
+	assertIntegrationScoreExists(t, response.Scores, "test_level_003", "fuel_rem", 60)
 }
 
 func TestIntegrationBestScoresPersonalWithoutLevelsExcludesOtherUsers(t *testing.T) {
@@ -287,7 +287,7 @@ func TestIntegrationBestScoresPersonalWithoutLevelsExcludesOtherUsers(t *testing
 		LevelVersion: 3,
 		GameVersion:  "1.0.0",
 		Scores: map[string]int{
-			"fuel":     55,
+			"fuel_rem": 55,
 			"striping": 85,
 		},
 	}
@@ -311,7 +311,7 @@ func TestIntegrationBestScoresPersonalWithoutLevelsExcludesOtherUsers(t *testing
 		LevelVersion: 3,
 		GameVersion:  "1.0.0",
 		Scores: map[string]int{
-			"fuel":     40,
+			"fuel_rem": 40,
 			"striping": 97,
 		},
 	}
@@ -340,7 +340,7 @@ func TestIntegrationBestScoresPersonalWithoutLevelsExcludesOtherUsers(t *testing
 	assertIntegrationScoreCount(t, response, 4)
 	assertIntegrationScoreExists(t, response.Scores, "pers_best_a", "time_ms", 24000)
 	assertIntegrationScoreExists(t, response.Scores, "pers_best_a", "stars", 2)
-	assertIntegrationScoreExists(t, response.Scores, "pers_best_b", "fuel", 55)
+	assertIntegrationScoreExists(t, response.Scores, "pers_best_b", "fuel_rem", 55)
 	assertIntegrationScoreExists(t, response.Scores, "pers_best_b", "striping", 85)
 
 	for _, score := range response.Scores {
@@ -382,7 +382,7 @@ func TestIntegrationBestScoresGlobalWithoutLevelsReturnsBestAcrossUsers(t *testi
 		LevelVersion: 1,
 		GameVersion:  "1.0.0",
 		Scores: map[string]int{
-			"fuel":     70,
+			"fuel_rem": 50,
 			"striping": 60,
 		},
 	}
@@ -406,7 +406,7 @@ func TestIntegrationBestScoresGlobalWithoutLevelsReturnsBestAcrossUsers(t *testi
 		LevelVersion: 1,
 		GameVersion:  "1.0.0",
 		Scores: map[string]int{
-			"fuel":     50,
+			"fuel_rem": 70,
 			"striping": 80,
 		},
 	}
@@ -438,12 +438,12 @@ func TestIntegrationBestScoresGlobalWithoutLevelsReturnsBestAcrossUsers(t *testi
 	// User 2's better scores should appear and be attributed to them
 	assertIntegrationScoreExists(t, response.Scores, "glob_best_a", "time_ms", 22000)
 	assertIntegrationScoreExists(t, response.Scores, "glob_best_a", "stars", 3)
-	assertIntegrationScoreExists(t, response.Scores, "glob_best_b", "fuel", 50)
+	assertIntegrationScoreExists(t, response.Scores, "glob_best_b", "fuel_rem", 70)
 	assertIntegrationScoreExists(t, response.Scores, "glob_best_b", "striping", 80)
 
 	assertIntegrationScoreUser(t, response.Scores, "glob_best_a", "time_ms", integrationConfig.TestUserID2)
 	assertIntegrationScoreUser(t, response.Scores, "glob_best_a", "stars", integrationConfig.TestUserID2)
-	assertIntegrationScoreUser(t, response.Scores, "glob_best_b", "fuel", integrationConfig.TestUserID2)
+	assertIntegrationScoreUser(t, response.Scores, "glob_best_b", "fuel_rem", integrationConfig.TestUserID2)
 	assertIntegrationScoreUser(t, response.Scores, "glob_best_b", "striping", integrationConfig.TestUserID2)
 
 	// User 1's worse scores should not appear for those levels

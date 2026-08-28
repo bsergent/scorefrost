@@ -12,7 +12,7 @@ Authorization: Bearer {{dev_api_key}}
   "scores": {
     "time_ms": 12500,
     "striping": 85,
-    "fuel": 750,
+    "fuel_rem": 750,
     "stars": 3
   }
 }

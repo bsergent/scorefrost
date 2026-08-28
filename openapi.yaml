@@ -29,7 +29,7 @@ info:
     Supported score types for leaderboards and best scores:
     - `time_ms` - Completion time in milliseconds (lower is better)
     - `striping` - Coverage/striping percentage (higher is better) 
-    - `fuel` - Fuel consumption (lower is better)
+    - `fuel_rem` - Fuel remaining (higher is better)
     - `stars` - Star rating achieved (higher is better)
   version: 0.2.0
   contact:
@@ -279,7 +279,7 @@ paths:
           description: Filter by specific score type
           schema:
             type: string
-            enum: [time_ms, striping, fuel, stars]
+            enum: [time_ms, striping, fuel_rem, stars]
             example: "time_ms"
       responses:
         '200':
@@ -330,7 +330,7 @@ paths:
           description: Filter by specific score type
           schema:
             type: string
-            enum: [time_ms, striping, fuel, stars]
+            enum: [time_ms, striping, fuel_rem, stars]
             example: "time_ms"
         - name: offset
           in: query
@@ -645,7 +645,7 @@ components:
           example:
             time_ms: 15420
             striping: 95
-            fuel: 45
+            fuel_rem: 45
       required:
         - level_id
         - level_version
@@ -683,7 +683,7 @@ components:
         score_type:
           type: string
           description: Type of score
-          enum: [time_ms, striping, fuel, stars]
+          enum: [time_ms, striping, fuel_rem, stars]
           example: "time_ms"
         best_score:
           type: integer
@@ -755,7 +755,7 @@ components:
         score_type:
           type: string
           description: Type of score
-          enum: [time_ms, striping, fuel, stars]
+          enum: [time_ms, striping, fuel_rem, stars]
           example: "time_ms"
         best_score:
           type: integer

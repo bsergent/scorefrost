@@ -19,7 +19,7 @@ GET {{host}}/api/{{api_version}}/score/leaderboard?levels=speed_run.1,endurance.
 Authorization: Bearer {{dev_api_key}}
 
 ### GET Leaderboard - Multiple levels with mixed versions (Specific Score Type)
-GET {{host}}/api/{{api_version}}/score/leaderboard?levels=level_a,level_b.1,level_c.3,level_d&scope=global&score_type=fuel&offset=20&size=25
+GET {{host}}/api/{{api_version}}/score/leaderboard?levels=level_a,level_b.1,level_c.3,level_d&scope=global&score_type=fuel_rem&offset=20&size=25
 Authorization: Bearer {{dev_api_key}}
 
 ### GET Leaderboard - Default pagination (no offset/size)
