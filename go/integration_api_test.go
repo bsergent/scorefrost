@@ -847,3 +847,216 @@ func TestIntegrationLeaderboardScoreTypeFiltering(t *testing.T) {
 		t.Errorf("Expected 2 striping scores (one per user), got %d", stripingScoresFound)
 	}
 }
+
+// Integration tests for enhanced login with user_id and api_key recovery
+
+func TestIntegrationLoginWithValidUserIDAndAPIKey(t *testing.T) {
+	db := mustConnectToIntegrationDB()
+	defer db.Close()
+
+	server := httptest.NewServer(setupTestRoutes(db))
+	defer server.Close()
+
+	// First create a user to get their internal ID and API key
+	originalUser, err := createIntegrationTestUser(server.URL)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Now authenticate with user_id and api_key
+	user, statusCode, err := loginWithUserIDAndAPIKey(server.URL, originalUser.ID, originalUser.APIKey)
+	if err != nil {
+		t.Fatalf("Failed to login with internal user ID and API key: %v", err)
+	}
+
+	// Should return 200 OK
+	if statusCode != 200 {
+		t.Errorf("Expected status code 200, got %d", statusCode)
+	}
+
+	// Verify the user matches the original
+	if user.ID != originalUser.ID {
+		t.Errorf("User ID mismatch: got %s, want %s", user.ID, originalUser.ID)
+	}
+
+	// API key should NOT be included in response for existing user
+	if user.APIKey != "" {
+		t.Error("API key should not be included for existing user")
+	}
+}
+
+func TestIntegrationLoginWithUserIDNoAPIKey(t *testing.T) {
+	db := mustConnectToIntegrationDB()
+	defer db.Close()
+
+	server := httptest.NewServer(setupTestRoutes(db))
+	defer server.Close()
+
+	// Create a user first
+	originalUser, err := createIntegrationTestUser(server.URL)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Try to login with user_id but no api_key
+	_, statusCode, err := loginWithUserID(server.URL, originalUser.ID)
+	
+	// Should return 401 Unauthorized
+	if statusCode != 401 {
+		t.Errorf("Expected status code 401, got %d", statusCode)
+	}
+}
+
+func TestIntegrationLoginWithUserIDInvalidAPIKey(t *testing.T) {
+	db := mustConnectToIntegrationDB()
+	defer db.Close()
+
+	server := httptest.NewServer(setupTestRoutes(db))
+	defer server.Close()
+
+	// Create a user first
+	originalUser, err := createIntegrationTestUser(server.URL)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Try to login with user_id but wrong api_key
+	_, statusCode, err := loginWithUserIDAndAPIKey(server.URL, originalUser.ID, "wrong-api-key")
+	
+	// Should return 401 Unauthorized
+	if statusCode != 401 {
+		t.Errorf("Expected status code 401, got %d", statusCode)
+	}
+}
+
+func TestIntegrationLoginWithInvalidUUIDFormat(t *testing.T) {
+	db := mustConnectToIntegrationDB()
+	defer db.Close()
+
+	server := httptest.NewServer(setupTestRoutes(db))
+	defer server.Close()
+
+	// Try to login with invalid UUID format
+	_, statusCode, _ := loginWithUserIDAndAPIKey(server.URL, "not-a-valid-uuid", "some-api-key")
+	
+	// Should return 400 Bad Request
+	if statusCode != 400 {
+		t.Errorf("Expected status code 400, got %d", statusCode)
+	}
+}
+
+func TestIntegrationLoginReclaimUserWithNonexistentID(t *testing.T) {
+	db := mustConnectToIntegrationDB()
+	defer db.Close()
+
+	server := httptest.NewServer(setupTestRoutes(db))
+	defer server.Close()
+
+	// Generate a fresh UUID for reclamation testing - ensures it doesn't exist
+	reclaimUUID := uuid.New().String()
+
+	// Try to login with user_id (nonexistent) - should create/reclaim with new API key
+	user, statusCode, err := loginWithUserIDAndAPIKey(server.URL, reclaimUUID, "some-api-key-ignored")
+	if err != nil {
+		t.Fatalf("Failed to reclaim user: %v", err)
+	}
+
+	// Should return 201 Created
+	if statusCode != 201 {
+		t.Errorf("Expected status code 201, got %d", statusCode)
+	}
+
+	// Verify user was created with the requested internal ID
+	if user.ID != reclaimUUID {
+		t.Errorf("User ID mismatch: got %s, want %s", user.ID, reclaimUUID)
+	}
+
+	// API key should be included for new/reclaimed user
+	if user.APIKey == "" {
+		t.Error("API key should be included for reclaimed user")
+	}
+
+	// API key should be different from the one passed in (we generate a new one)
+	if user.APIKey == "some-api-key-ignored" {
+		t.Error("Generated API key should be different from the ignored input")
+	}
+}
+
+func TestIntegrationLoginReclaimDeletedUser(t *testing.T) {
+	db := mustConnectToIntegrationDB()
+	defer db.Close()
+
+	server := httptest.NewServer(setupTestRoutes(db))
+	defer server.Close()
+
+	// Create a user and submit a score before deleting the account
+	originalUser, err := createIntegrationTestUser(server.URL)
+	if err != nil {
+		t.Fatalf("Failed to create user: %v", err)
+	}
+
+	// Submit a score
+	solution := "SGVsbG8gV29ybGQ=" // "Hello World" in base64
+	solutionHash := calculateIntegrationSolutionHash(solution)
+
+	request := IntegrationScoreSubmissionRequest{
+		Solution:     solution,
+		SolutionHash: solutionHash,
+		LevelID:      "recovery_level",
+		LevelVersion: 1,
+		GameVersion:  "1.0.0",
+		Scores: map[string]int{
+			"time_ms": 10000,
+		},
+	}
+
+	_, err = submitIntegrationScore(server, originalUser.APIKey, request)
+	if err != nil {
+		t.Fatalf("Failed to submit score: %v", err)
+	}
+
+	// Delete the user row so the login flow must reclaim the account
+	// Note that this cascades and deletes the score as well
+	result, err := db.Exec(`
+		DELETE FROM "user"
+		WHERE id = $1
+	`, originalUser.ID)
+	if err != nil {
+		t.Fatalf("Failed to delete user before reclaim test: %v", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		t.Fatalf("Failed to check deleted rows before reclaim test: %v", err)
+	}
+	if rowsAffected != 1 {
+		t.Fatalf("Expected to delete 1 user before reclaim test, deleted %d", rowsAffected)
+	}
+
+	// Test that the deleted user can be reclaimed successfully
+	// Reclaim the account using the original user ID and API key
+	authenticatedUser, statusCode, err := loginWithUserIDAndAPIKey(server.URL, originalUser.ID, originalUser.APIKey)
+	if err != nil {
+		t.Fatalf("Failed to reclaim user: %v", err)
+	}
+
+	// Should return 201 Created for a reclaimed user
+	if statusCode != 201 {
+		t.Errorf("Expected status code 201, got %d", statusCode)
+	}
+
+	// Verify reclaimed user is not nil and has the same user ID
+	if authenticatedUser == nil {
+		t.Fatalf("authenticatedUser is nil after reclaim")
+	}
+	if authenticatedUser.ID != originalUser.ID {
+		t.Errorf("Reclaimed user ID mismatch: got %s, want %s", authenticatedUser.ID, originalUser.ID)
+	}
+	if authenticatedUser.APIKey == "" {
+		t.Error("API key should be returned for reclaimed user")
+	}
+	if authenticatedUser.APIKey == originalUser.APIKey {
+		t.Error("Reclaimed user should receive a new API key")
+	}
+}
+

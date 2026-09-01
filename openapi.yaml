@@ -124,18 +124,54 @@ paths:
 
   /api/v2/user:
     post:
-      summary: Create User
-      description: Creates a new user with auto-generated credentials
+      summary: Create User or Authenticate with Recovery
+      description: |
+        Creates a new user with auto-generated credentials, authenticates an existing user, 
+        or recovers/reclaims a user account using internal ID and API key.
+        
+        **Behavior:**
+        - If `user_id` and API key (via Authorization header) are provided:
+          - User exists with matching API key: 200 OK (authentication)
+          - User exists with wrong API key: 401 Unauthorized
+          - User doesn't exist: 201 Created (reclaim user with new API key)
+          - Invalid UUID format: 400 Bad Request
+        - If `user_id` is provided without API key in Authorization header: 401 Unauthorized
+        - If no `user_id` with Bearer token in Authorization header: authenticate existing user
+        - If neither provided: create new user (201 Created)
       tags:
         - Users
       security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
       responses:
-        '201':
-          description: User created successfully
+        '200':
+          description: User authenticated successfully (existing user)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateUserResponse'
+        '201':
+          description: User created successfully or reclaimed with new credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUserResponse'
+        '400':
+          description: Invalid request (missing required fields or invalid UUID format)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (invalid API key or missing required credentials)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
@@ -573,6 +609,27 @@ components:
         - id
         - display_name
         - friend_code
+
+    LoginRequest:
+      type: object
+      properties:
+        game_id:
+          type: string
+          description: Game identifier
+          example: "com.company.mygame"
+        game_version:
+          type: string
+          description: Version of the game client
+          example: "1.2.3"
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional user ID (UUID) for authentication or user recovery. When provided, api_key must be in Authorization header.
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      required:
+        - game_id
+        - game_version
 
     UpdateDisplayNameRequest:
       type: object

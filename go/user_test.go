@@ -2,6 +2,8 @@ package main
 
 import (
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func TestAPIKeyHashing(t *testing.T) {
@@ -109,5 +111,30 @@ func TestAPIKeyGeneration(t *testing.T) {
 	// Keys should be base64 encoded (basic check)
 	if len(key1) < 20 {
 		t.Error("API key seems too short")
+	}
+}
+
+func TestUUIDValidation(t *testing.T) {
+	// Test UUID validation in login request processing
+	testCases := []struct {
+		uuid  string
+		valid bool
+	}{
+		{"123e4567-e89b-12d3-a456-426614174000", true},  // Valid UUID
+		{"00000000-0000-0000-0000-000000000001", true},  // Valid UUID (all zeros except last digit)
+		{"invalid-uuid-format", false},                  // Invalid format
+		{"123e4567-e89b-12d3-a456-42661417400", false},  // Too short
+		{"", false},                                     // Empty
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.uuid, func(t *testing.T) {
+			// We'll use uuid.Parse which is the same as what the code uses
+			_, err := uuid.Parse(tc.uuid)
+			isValid := err == nil
+			if isValid != tc.valid {
+				t.Errorf("UUID %q: expected valid=%v, got valid=%v", tc.uuid, tc.valid, isValid)
+			}
+		})
 	}
 }

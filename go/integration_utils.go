@@ -211,6 +211,57 @@ func authenticateIntegrationTestUser(baseURL string, apiKey string) (*Integratio
 	return &user, nil
 }
 
+// loginWithUserIDAndAPIKey authenticates or creates a user with provided user ID and apiKey
+// The apiKey is passed via Authorization header as Bearer token
+func loginWithUserIDAndAPIKey(baseURL string, userID string, apiKey string) (*IntegrationTestUser, int, error) {
+	requestBody := map[string]interface{}{
+		"game_id":           "com.company.testgame",
+		"game_version":      "1.0.0",
+		"user_id":           userID,
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", baseURL+APIBasePath+"/user", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	
+	// Add API key to Authorization header if provided
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+
+	// For non-success responses, read the body as a string to return error info
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, resp.StatusCode, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var user IntegrationTestUser
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, resp.StatusCode, err
+	}
+
+	return &user, resp.StatusCode, nil
+}
+
+// loginWithUserID creates/authenticates a user with only a user ID (no apiKey in Authorization header)
+func loginWithUserID(baseURL string, userID string) (*IntegrationTestUser, int, error) {
+	return loginWithUserIDAndAPIKey(baseURL, userID, "")
+}
+
 // Integration test HTTP helpers
 
 func makeIntegrationRequest(server *httptest.Server, method, path string, headers map[string]string, body io.Reader) (*http.Response, error) {

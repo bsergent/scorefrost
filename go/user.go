@@ -56,8 +56,9 @@ type UserFull struct {
 
 // LoginRequest represents the JSON request body for POST {APIBasePath}/user (login/create)
 type LoginRequest struct {
-	GameID      string `json:"game_id"`
-	GameVersion string `json:"game_version"`
+	GameID         string `json:"game_id"`
+	GameVersion    string `json:"game_version"`
+	UserID         *string `json:"user_id,omitempty"`
 }
 
 // UpdateDisplayNameRequest represents the JSON request body for PUT /user/{id}/name
@@ -89,13 +90,70 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 		// Get Authorization header
 		auth := r.Header.Get("Authorization")
 		var apiKey string
-		var isNewUser bool
-
-		// Check if API key is provided
 		if auth != "" && strings.HasPrefix(auth, "Bearer ") {
 			apiKey = strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
 		}
 
+		// Handle case where user_id is provided
+		if req.UserID != nil && strings.TrimSpace(*req.UserID) != "" {
+			requestedUserID := strings.TrimSpace(*req.UserID)
+			
+			// Validate that it's a valid UUID
+			if _, err := uuid.Parse(requestedUserID); err != nil {
+				http.Error(w, "Invalid user ID format. Must be a valid UUID", http.StatusBadRequest)
+				return
+			}
+
+			// Check if API key is provided in Authorization header
+			if apiKey == "" {
+				// No API key provided for authentication
+				http.Error(w, "Unauthorized: API key required when user_id is provided", http.StatusUnauthorized)
+				return
+			}
+
+			// Try to authenticate with the provided user ID and API key
+			userFull, err := authenticateUserByID(db, requestedUserID, apiKey)
+			var statusCode int
+			if err != nil {
+				if err.Error() == "user not found" {
+					// User not found - allow reclamation of UUID with new API key
+					userFull, err = reclaimUserWithID(db, requestedUserID, req.GameVersion)
+					if err != nil {
+						log.Printf("Failed to reclaim user: %v", err)
+						http.Error(w, "Failed to reclaim user", http.StatusInternalServerError)
+						return
+					}
+					statusCode = http.StatusCreated
+				} else if err.Error() == "invalid api key" {
+					log.Printf("Invalid API key for user %s from IP %s", requestedUserID, getIPAddress(r))
+					http.Error(w, "Unauthorized: Invalid API key", http.StatusUnauthorized)
+					return
+				} else {
+					log.Printf("Authentication error: %v", err)
+					http.Error(w, "Internal server error", http.StatusInternalServerError)
+					return
+				}
+			} else {
+				statusCode = http.StatusOK
+			}
+
+			// Update user's active time
+			if err := updateUserActiveTime(db, userFull.ID, req.GameVersion); err != nil {
+				log.Printf("Failed to update user active time: %v", err)
+				// Don't fail the request, just log the error
+			}
+
+			// Send JSON response
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(statusCode)
+			if err := json.NewEncoder(w).Encode(userFull); err != nil {
+				log.Printf("Failed to encode response: %v", err)
+			}
+			return
+		}
+
+		// Create new user or authenticate with Bearer token
+		var isNewUser bool
 		var userFull *UserFull
 		var err error
 
@@ -253,7 +311,50 @@ func generateFriendCode() (string, error) {
 	return fmt.Sprintf("%s-%s", string(code[:4]), string(code[4:])), nil
 }
 
-// isDuplicateKeyError checks if the error is a PostgreSQL unique constraint violation
+// tryCreateUser repeatedly attempts to create a user until the database accepts
+// the generated friend code or the retry limit is reached.
+func tryCreateUser(db *sql.DB, userID, apiKey, gameVersion string) (*UserFull, error) {
+	const maxRetries = 10
+
+	// Generate the API key hash once per user creation attempt sequence.
+	// The same API key is reused across retries while friend code changes.
+	apiKeyHash := hashAPIKey(apiKey)
+
+	// Generate random display name once per sequence.
+	// It's okay if the display name is not unique.
+	displayName, err := generateRandomDisplayName()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate display name: %w", err)
+	}
+
+	for i := 0; i < maxRetries; i++ {
+		friendCode, err := generateFriendCode()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate friend code: %w", err)
+		}
+
+		var returnedID string
+		err = db.QueryRow(
+			"SELECT create_user($1, $2, $3, $4, $5)",
+			userID,
+			friendCode,
+			displayName,
+			apiKeyHash,
+			gameVersion,
+		).Scan(&returnedID)
+		if err == nil {
+			return fetchUserFullObject(db, userID, apiKey)
+		}
+
+		if !isDuplicateKeyError(err) {
+			return nil, fmt.Errorf("failed to create user: %w", err)
+		}
+	}
+
+	return nil, fmt.Errorf("failed to generate unique friend code after %d attempts", maxRetries)
+}
+
+// isDuplicateKeyError checks if the error is a PostgreSQL unique constraint violation.
 func isDuplicateKeyError(err error) bool {
 	if err == nil {
 		return false
@@ -349,55 +450,27 @@ func createNewUser(db *sql.DB, gameVersion string) (*UserFull, error) {
 		return nil, fmt.Errorf("failed to generate API key: %w", err)
 	}
 
-	// Hash the API key for storage
-	apiKeyHash := hashAPIKey(apiKey)
+	// Try to create the user, retrying only when the database reports a duplicate
+	// friend code.
+	return tryCreateUser(db, userID.String(), apiKey, gameVersion)
+}
 
-	// Generate random display name
-	displayName, err := generateRandomDisplayName()
+// Helper function to reclaim a user with a given ID (for disaster recovery)
+func reclaimUserWithID(db *sql.DB, userID, gameVersion string) (*UserFull, error) {
+	// Generate a new API key
+	// We intentionally do generate a new API key instead of reusing the provided one
+	// as we cannot guarantee that the provided key is cryptographically random. By
+	// generating a new key here, we maintain the invariant that every api key in our
+	// database is cryptographically random. The user will receive the new API key in
+	// the response and can use it for future authentication.
+	apiKey, err := generateAPIKey()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate display name: %w", err)
+		return nil, fmt.Errorf("failed to generate API key: %w", err)
 	}
 
-	// Generate a unique friend code with retry logic
-	const maxRetries = 10
-	var friendCode string
-	var returnedID string
-
-	for i := range maxRetries {
-		// Generate friend code
-		friendCode, err = generateFriendCode()
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate friend code: %w", err)
-		}
-
-		// Try to insert user into database
-		err = db.QueryRow(
-			"SELECT create_user($1, $2, $3, $4, $5)",
-			userID.String(),
-			friendCode,
-			displayName,
-			apiKeyHash,
-			gameVersion,
-		).Scan(&returnedID)
-
-		// If successful, break out of retry loop
-		if err == nil {
-			break
-		}
-
-		// Check if error is due to duplicate friend code
-		if !isDuplicateKeyError(err) {
-			return nil, fmt.Errorf("failed to create user: %w", err)
-		}
-
-		// If last retry, return error
-		if i == maxRetries-1 {
-			return nil, fmt.Errorf("failed to generate unique friend code after %d attempts", maxRetries)
-		}
-	}
-
-	// Create UserFull response with the new API key
-	return fetchUserFullObject(db, userID.String(), apiKey)
+	// Try to reclaim the user, retrying only when the database reports a duplicate
+	// friend code.
+	return tryCreateUser(db, userID, apiKey, gameVersion)
 }
 
 // Helper function to authenticate existing user and return UserFull details
@@ -418,6 +491,35 @@ func authenticateUser(db *sql.DB, apiKey string) (*UserFull, error) {
 	}
 	if err != nil {
 		return nil, fmt.Errorf("database error: %w", err)
+	}
+
+	// Create UserFull response without API key
+	return fetchUserFullObject(db, userID, "")
+}
+
+// Helper function to authenticate user by ID and API key
+func authenticateUserByID(db *sql.DB, userID, apiKey string) (*UserFull, error) {
+	// Hash the provided API key
+	hashedKey := hashAPIKey(apiKey)
+
+	// Look up user by ID and verify API key
+	var storedHash string
+	err := db.QueryRow(`
+		SELECT api_key_hash
+		FROM "user"
+		WHERE id = $1
+	`, userID).Scan(&storedHash)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("user not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+
+	// Check if the provided API key matches
+	if hashedKey != storedHash {
+		return nil, fmt.Errorf("invalid api key")
 	}
 
 	// Create UserFull response without API key
