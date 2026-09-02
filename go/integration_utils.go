@@ -22,12 +22,14 @@ import (
 
 // Integration test configuration
 type IntegrationConfig struct {
-	DBConnString string
-	SolutionSalt string
-	TestAPIKey   string
-	TestAPIKey2  string
-	TestUserID   string
-	TestUserID2  string
+	DBConnString    string
+	SolutionSalt    string
+	TestAPIKey      string
+	TestAPIKey2     string
+	TestUserID      string
+	TestUserID2     string
+	TestFriendCode  string
+	TestFriendCode2 string
 }
 
 // Global integration test configuration
@@ -109,6 +111,7 @@ func createIntegrationTestUsers() {
 	}
 	integrationConfig.TestAPIKey = user1.APIKey
 	integrationConfig.TestUserID = user1.ID
+	integrationConfig.TestFriendCode = user1.FriendCode
 
 	user2, err := createIntegrationTestUser(server.URL)
 	if err != nil {
@@ -116,6 +119,7 @@ func createIntegrationTestUsers() {
 	}
 	integrationConfig.TestAPIKey2 = user2.APIKey
 	integrationConfig.TestUserID2 = user2.ID
+	integrationConfig.TestFriendCode2 = user2.FriendCode
 }
 
 func mustConnectToIntegrationDB() *sql.DB {
@@ -453,11 +457,11 @@ func assertIntegrationScoreCount(t *testing.T, response *IntegrationBestScoresRe
 	}
 }
 
-func assertIntegrationScoreUser(t *testing.T, scores []IntegrationBestScoreEntry, levelID string, scoreType string, expectedUserID string) {
+func assertIntegrationScoreFriendCode(t *testing.T, scores []IntegrationBestScoreEntry, levelID string, scoreType string, expectedFriendCode string) {
 	for _, score := range scores {
 		if score.LevelID == levelID && score.ScoreType == scoreType {
-			if score.UserID != expectedUserID {
-				t.Errorf("Expected user %s for %s/%s, got %s", expectedUserID, levelID, scoreType, score.UserID)
+			if score.FriendCode != expectedFriendCode {
+				t.Errorf("Expected friend code %s for %s/%s, got %s", expectedFriendCode, levelID, scoreType, score.FriendCode)
 			}
 			return
 		}

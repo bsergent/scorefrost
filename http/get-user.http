@@ -1,8 +1,3 @@
-### Get user by UUID
-GET {{host}}/api/{{api_version}}/user/00000000-0000-0000-0000-000000000001
-
-###
-
 ### Get user by friend code
 GET {{host}}/api/{{api_version}}/user/0000-0001
 

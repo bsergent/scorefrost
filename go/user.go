@@ -36,17 +36,24 @@ var nouns = []string{
 	"Tiger", "Titan", "Viking", "Warrior", "Wizard", "Wolf", "Wonder", "Yeti",
 }
 
-// User represents the JSON response for GET /user/{id}
+// User represents the base user payload used across responses.
 type User struct {
 	ApiResponse
-	ID          string `json:"id"`
+	ID          string `json:"id,omitempty"`
 	DisplayName string `json:"display_name"`
 	FriendCode  string `json:"friend_code"`
 }
 
+// AuthenticatedUser represents the private user payload returned by POST /user.
+// It includes the internal user ID, which is intentionally private outside login flows.
+type AuthenticatedUser struct {
+	User
+	ID string `json:"id"`
+}
+
 // UserFull represents detailed user information returned by login
 type UserFull struct {
-	User
+	AuthenticatedUser
 	DateTimeCreatedUTC string `json:"date_time_created_utc"`
 	DateTimeActiveUTC  string `json:"date_time_active_utc"`
 	GameVersion        string `json:"game_version"`
@@ -56,12 +63,12 @@ type UserFull struct {
 
 // LoginRequest represents the JSON request body for POST {APIBasePath}/user (login/create)
 type LoginRequest struct {
-	GameID         string `json:"game_id"`
-	GameVersion    string `json:"game_version"`
-	UserID         *string `json:"user_id,omitempty"`
+	GameID      string  `json:"game_id"`
+	GameVersion string  `json:"game_version"`
+	UserID      *string `json:"user_id,omitempty"`
 }
 
-// UpdateDisplayNameRequest represents the JSON request body for PUT /user/{id}/name
+// UpdateDisplayNameRequest represents the JSON request body for PUT /user/name
 type UpdateDisplayNameRequest struct {
 	DisplayName string `json:"display_name"`
 }
@@ -97,7 +104,7 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 		// Handle case where user_id is provided
 		if req.UserID != nil && strings.TrimSpace(*req.UserID) != "" {
 			requestedUserID := strings.TrimSpace(*req.UserID)
-			
+
 			// Validate that it's a valid UUID
 			if _, err := uuid.Parse(requestedUserID); err != nil {
 				http.Error(w, "Invalid user ID format. Must be a valid UUID", http.StatusBadRequest)
@@ -200,38 +207,24 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// getUserHandler handles GET /user/{id} and GET /user/{friend_code} requests
+// getUserHandler handles GET /user/{friend_code} requests.
 func getUserHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Extract identifier from URL path parameter (Go 1.22+)
-		identifier := r.PathValue("user_id")
+		// Extract friend code from URL path parameter (Go 1.22+)
+		friendCode := strings.TrimSpace(r.PathValue("friend_code"))
 
-		if identifier == "" {
-			http.Error(w, "User ID or friend code is required", http.StatusBadRequest)
+		if friendCode == "" {
+			http.Error(w, "Friend code is required", http.StatusBadRequest)
 			return
 		}
 
-		// Try to determine if it's a UUID or friend code
-		var id, displayName, friendCode string
-		var err error
-
-		// Check if it's a valid UUID format
-		if _, uuidErr := uuid.Parse(identifier); uuidErr == nil {
-			// It's a UUID - query by ID
-			err = db.QueryRow(`
-				SELECT id, COALESCE(display_name, ''), friend_code
-				FROM "user"
-				WHERE id = $1
-			`, identifier).Scan(&id, &displayName, &friendCode)
-		} else {
-			// Not a UUID - treat as friend code
-			// Friend codes are in format XXXX-XXXX (9 characters including dash)
-			err = db.QueryRow(`
-				SELECT id, COALESCE(display_name, ''), friend_code
-				FROM "user"
-				WHERE friend_code = $1
-			`, identifier).Scan(&id, &displayName, &friendCode)
-		}
+		// Friend codes are public identifiers in format XXXX-XXXX.
+		var displayName string
+		err := db.QueryRow(`
+			SELECT COALESCE(display_name, '')
+			FROM "user"
+			WHERE friend_code = $1
+		`, friendCode).Scan(&displayName)
 
 		if err == sql.ErrNoRows {
 			http.Error(w, "User not found", http.StatusNotFound)
@@ -246,7 +239,6 @@ func getUserHandler(db *sql.DB) http.HandlerFunc {
 
 		// Prepare response
 		response := User{
-			ID:          id,
 			DisplayName: displayName,
 			FriendCode:  friendCode,
 		}
@@ -366,7 +358,7 @@ func isDuplicateKeyError(err error) bool {
 		strings.Contains(errMsg, "23505")
 }
 
-// updateDisplayNameHandler handles PUT /user/{id}/name requests
+// updateDisplayNameHandler handles PUT /user/name requests
 // Requires authentication via authMiddleware
 func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -422,12 +414,14 @@ func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Prepare response
+		friendCode, _ := GetFriendCode(r)
+
 		response := User{
 			ApiResponse: ApiResponse{
 				Message: "Display name updated and pending approval",
 			},
-			ID:          authenticatedUserID,
 			DisplayName: newDisplayName,
+			FriendCode:  friendCode,
 		}
 
 		// Send JSON response
@@ -549,10 +543,12 @@ func fetchUserFullObject(db *sql.DB, userID, apiKey string) (*UserFull, error) {
 	}
 
 	userFull := &UserFull{
-		User: User{
-			ID:          userID,
-			FriendCode:  friendCode.String,
-			DisplayName: displayName.String,
+		AuthenticatedUser: AuthenticatedUser{
+			User: User{
+				FriendCode:  friendCode.String,
+				DisplayName: displayName.String,
+			},
+			ID: userID,
 		},
 		DateTimeCreatedUTC: createdTime.String,
 		DateTimeActiveUTC:  activeTime.String,

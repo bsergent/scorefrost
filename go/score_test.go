@@ -101,7 +101,6 @@ func TestLeaderboardResponseStructure(t *testing.T) {
 			LevelVersion: 1,
 			ScoreType:    "time_ms",
 			BestScore:    15000,
-			UserID:       "user123",
 			DisplayName:  "Test User",
 			FriendCode:   "ABC-123",
 		},

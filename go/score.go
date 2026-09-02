@@ -28,7 +28,6 @@ type BestScoreEntry struct {
 	LevelVersion int    `json:"level_version"`
 	ScoreType    string `json:"score_type"`
 	BestScore    int    `json:"best_score"`
-	UserID       string `json:"user_id"`
 	DisplayName  string `json:"display_name"`
 	FriendCode   string `json:"friend_code"`
 }
@@ -308,12 +307,13 @@ func bestScoresHandler(db *sql.DB) http.HandlerFunc {
 		var scores []BestScoreEntry
 		for rows.Next() {
 			var entry BestScoreEntry
+			var privateUserID string
 			err := rows.Scan(
 				&entry.LevelID,
 				&entry.LevelVersion,
 				&entry.ScoreType,
 				&entry.BestScore,
-				&entry.UserID,
+				&privateUserID,
 				&entry.DisplayName,
 				&entry.FriendCode,
 			)
@@ -472,13 +472,14 @@ func leaderboardHandler(db *sql.DB) http.HandlerFunc {
 		var scores []LeaderboardEntry
 		for rows.Next() {
 			var entry LeaderboardEntry
+			var privateUserID string
 			err := rows.Scan(
 				&entry.Rank,
 				&entry.LevelID,
 				&entry.LevelVersion,
 				&entry.ScoreType,
 				&entry.BestScore,
-				&entry.UserID,
+				&privateUserID,
 				&entry.DisplayName,
 				&entry.FriendCode,
 			)

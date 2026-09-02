@@ -202,8 +202,8 @@ func TestIntegrationBestScoresGlobal(t *testing.T) {
 	assertIntegrationScoreExists(t, response.Scores, "test_level_002", "stars", 3)
 
 	// Verify the better scores belong to user 2
-	assertIntegrationScoreUser(t, response.Scores, "test_level_002", "time_ms", integrationConfig.TestUserID2)
-	assertIntegrationScoreUser(t, response.Scores, "test_level_002", "stars", integrationConfig.TestUserID2)
+	assertIntegrationScoreFriendCode(t, response.Scores, "test_level_002", "time_ms", integrationConfig.TestFriendCode2)
+	assertIntegrationScoreFriendCode(t, response.Scores, "test_level_002", "stars", integrationConfig.TestFriendCode2)
 }
 
 func TestIntegrationBestScoresPersonal(t *testing.T) {
@@ -224,7 +224,7 @@ func TestIntegrationBestScoresPersonal(t *testing.T) {
 		LevelVersion: 1,
 		GameVersion:  "1.0.0",
 		Scores: map[string]int{
-			"time_ms": 25000,
+			"time_ms":  25000,
 			"fuel_rem": 60,
 		},
 	}
@@ -249,8 +249,8 @@ func TestIntegrationBestScoresPersonal(t *testing.T) {
 
 	// All scores should belong to user 1
 	for _, score := range response.Scores {
-		if score.UserID != integrationConfig.TestUserID {
-			t.Errorf("Expected all scores to belong to user %s, found score for user %s", integrationConfig.TestUserID, score.UserID)
+		if score.FriendCode != integrationConfig.TestFriendCode {
+			t.Errorf("Expected all scores to belong to friend code %s, found score for friend code %s", integrationConfig.TestFriendCode, score.FriendCode)
 		}
 	}
 
@@ -344,8 +344,8 @@ func TestIntegrationBestScoresPersonalWithoutLevelsExcludesOtherUsers(t *testing
 	assertIntegrationScoreExists(t, response.Scores, "pers_best_b", "striping", 85)
 
 	for _, score := range response.Scores {
-		if score.UserID != integrationConfig.TestUserID {
-			t.Errorf("Expected personal scores only for user %s, got user %s", integrationConfig.TestUserID, score.UserID)
+		if score.FriendCode != integrationConfig.TestFriendCode {
+			t.Errorf("Expected personal scores only for friend code %s, got friend code %s", integrationConfig.TestFriendCode, score.FriendCode)
 		}
 		if score.BestScore == 18000 || score.BestScore == 4 || score.BestScore == 40 || score.BestScore == 97 {
 			t.Errorf("Found competing user better score in personal response: %+v", score)
@@ -441,15 +441,15 @@ func TestIntegrationBestScoresGlobalWithoutLevelsReturnsBestAcrossUsers(t *testi
 	assertIntegrationScoreExists(t, response.Scores, "glob_best_b", "fuel_rem", 70)
 	assertIntegrationScoreExists(t, response.Scores, "glob_best_b", "striping", 80)
 
-	assertIntegrationScoreUser(t, response.Scores, "glob_best_a", "time_ms", integrationConfig.TestUserID2)
-	assertIntegrationScoreUser(t, response.Scores, "glob_best_a", "stars", integrationConfig.TestUserID2)
-	assertIntegrationScoreUser(t, response.Scores, "glob_best_b", "fuel_rem", integrationConfig.TestUserID2)
-	assertIntegrationScoreUser(t, response.Scores, "glob_best_b", "striping", integrationConfig.TestUserID2)
+	assertIntegrationScoreFriendCode(t, response.Scores, "glob_best_a", "time_ms", integrationConfig.TestFriendCode2)
+	assertIntegrationScoreFriendCode(t, response.Scores, "glob_best_a", "stars", integrationConfig.TestFriendCode2)
+	assertIntegrationScoreFriendCode(t, response.Scores, "glob_best_b", "fuel_rem", integrationConfig.TestFriendCode2)
+	assertIntegrationScoreFriendCode(t, response.Scores, "glob_best_b", "striping", integrationConfig.TestFriendCode2)
 
 	// User 1's worse scores should not appear for those levels
 	for _, score := range response.Scores {
 		if score.LevelID == "glob_best_a" || score.LevelID == "glob_best_b" {
-			if score.UserID == integrationConfig.TestUserID {
+			if score.FriendCode == integrationConfig.TestFriendCode {
 				t.Errorf("Expected user 1's scores to be beaten by user 2, but found user 1's entry in global response: %+v", score)
 			}
 		}
@@ -660,10 +660,10 @@ func TestIntegrationLeaderboard(t *testing.T) {
 
 	// Verify ranking: User 2 should be rank 1 (better time), User 1 should be rank 2
 	for _, score := range response.Scores {
-		if score.UserID == integrationConfig.TestUserID2 && score.Rank != 1 {
+		if score.FriendCode == integrationConfig.TestFriendCode2 && score.Rank != 1 {
 			t.Errorf("User 2 should be rank 1 (best score), got rank %d", score.Rank)
 		}
-		if score.UserID == integrationConfig.TestUserID && score.Rank != 2 {
+		if score.FriendCode == integrationConfig.TestFriendCode && score.Rank != 2 {
 			t.Errorf("User 1 should be rank 2, got rank %d", score.Rank)
 		}
 	}
@@ -680,8 +680,8 @@ func TestIntegrationLeaderboard(t *testing.T) {
 
 	// Personal leaderboard should only contain scores for the authenticated user
 	for _, score := range personalResponse.Scores {
-		if score.UserID != integrationConfig.TestUserID {
-			t.Errorf("Personal leaderboard should only contain scores for user %s, found %s", integrationConfig.TestUserID, score.UserID)
+		if score.FriendCode != integrationConfig.TestFriendCode {
+			t.Errorf("Personal leaderboard should only contain scores for friend code %s, found %s", integrationConfig.TestFriendCode, score.FriendCode)
 		}
 	}
 
@@ -769,13 +769,13 @@ func TestIntegrationLeaderboardScoreTypeFiltering(t *testing.T) {
 		user1Found := false
 		user2Found := false
 		for _, score := range timeResponse.Scores {
-			if score.UserID == integrationConfig.TestUserID {
+			if score.FriendCode == integrationConfig.TestFriendCode {
 				user1Found = true
 				if score.Rank != 1 {
 					t.Errorf("User 1 should be rank 1 for time_ms, got rank %d", score.Rank)
 				}
 			}
-			if score.UserID == integrationConfig.TestUserID2 {
+			if score.FriendCode == integrationConfig.TestFriendCode2 {
 				user2Found = true
 				if score.Rank != 2 {
 					t.Errorf("User 2 should be rank 2 for time_ms, got rank %d", score.Rank)
@@ -805,13 +805,13 @@ func TestIntegrationLeaderboardScoreTypeFiltering(t *testing.T) {
 		user1Found := false
 		user2Found := false
 		for _, score := range stripingResponse.Scores {
-			if score.UserID == integrationConfig.TestUserID2 {
+			if score.FriendCode == integrationConfig.TestFriendCode2 {
 				user2Found = true
 				if score.Rank != 1 {
 					t.Errorf("User 2 should be rank 1 for striping, got rank %d", score.Rank)
 				}
 			}
-			if score.UserID == integrationConfig.TestUserID {
+			if score.FriendCode == integrationConfig.TestFriendCode {
 				user1Found = true
 				if score.Rank != 2 {
 					t.Errorf("User 1 should be rank 2 for striping, got rank %d", score.Rank)
@@ -900,7 +900,7 @@ func TestIntegrationLoginWithUserIDNoAPIKey(t *testing.T) {
 
 	// Try to login with user_id but no api_key
 	_, statusCode, err := loginWithUserID(server.URL, originalUser.ID)
-	
+
 	// Should return 401 Unauthorized
 	if statusCode != 401 {
 		t.Errorf("Expected status code 401, got %d", statusCode)
@@ -922,7 +922,7 @@ func TestIntegrationLoginWithUserIDInvalidAPIKey(t *testing.T) {
 
 	// Try to login with user_id but wrong api_key
 	_, statusCode, err := loginWithUserIDAndAPIKey(server.URL, originalUser.ID, "wrong-api-key")
-	
+
 	// Should return 401 Unauthorized
 	if statusCode != 401 {
 		t.Errorf("Expected status code 401, got %d", statusCode)
@@ -938,7 +938,7 @@ func TestIntegrationLoginWithInvalidUUIDFormat(t *testing.T) {
 
 	// Try to login with invalid UUID format
 	_, statusCode, _ := loginWithUserIDAndAPIKey(server.URL, "not-a-valid-uuid", "some-api-key")
-	
+
 	// Should return 400 Bad Request
 	if statusCode != 400 {
 		t.Errorf("Expected status code 400, got %d", statusCode)
@@ -1059,4 +1059,3 @@ func TestIntegrationLoginReclaimDeletedUser(t *testing.T) {
 		t.Error("Reclaimed user should receive a new API key")
 	}
 }
-

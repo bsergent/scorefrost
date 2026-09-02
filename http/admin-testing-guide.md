@@ -11,11 +11,11 @@
 ```http
 POST http://localhost:8080/user
 ```
-Save the returned `api_key` and `id` for next steps.
+Save the returned `api_key`, private `id`, and public `friend_code` for next steps.
 
 ### 2. Update display name (creates pending request)
 ```http
-PUT http://localhost:8080/user/{user_id}/name
+PUT http://localhost:8080/api/v2/user/name
 Authorization: Bearer {api_key_from_step_1}
 Content-Type: application/json
 
