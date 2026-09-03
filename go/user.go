@@ -130,6 +130,7 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 						http.Error(w, "Failed to reclaim user", http.StatusInternalServerError)
 						return
 					}
+					log.Printf("Reclaimed user: %s (%s)", userFull.DisplayName, userFull.FriendCode)
 					statusCode = http.StatusCreated
 				} else if err.Error() == "invalid api key" {
 					log.Printf("Invalid API key for user %s from IP %s", requestedUserID, getIPAddress(r))
@@ -142,6 +143,7 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 				}
 			} else {
 				statusCode = http.StatusOK
+				log.Printf("Authenticated user: %s (%s)", userFull.DisplayName, userFull.FriendCode)
 			}
 
 			// Update user's active time
@@ -172,6 +174,7 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 				http.Error(w, "Failed to create user", http.StatusInternalServerError)
 				return
 			}
+			log.Printf("Created user: %s (%s)", userFull.DisplayName, userFull.FriendCode)
 			isNewUser = true
 		} else {
 			// API key provided - authenticate existing user or return error
@@ -186,6 +189,7 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 				http.Error(w, "Internal server error", http.StatusInternalServerError)
 				return
 			}
+			log.Printf("Authenticated user: %s (%s)", userFull.DisplayName, userFull.FriendCode)
 		}
 
 		// Update user's active time
