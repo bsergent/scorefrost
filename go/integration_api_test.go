@@ -993,6 +993,62 @@ func TestIntegrationLoginReclaimUserWithNonexistentID(t *testing.T) {
 	}
 }
 
+func TestIntegrationLoginReclaimUserWithRequestedFriendCode(t *testing.T) {
+	db := mustConnectToIntegrationDB()
+	defer db.Close()
+
+	server := httptest.NewServer(setupTestRoutes(db))
+	defer server.Close()
+
+	reclaimUUID := uuid.New().String()
+	requestedFriendCode := "ABCD-EF01"
+
+	user, statusCode, err := loginWithUserIDAndAPIKeyAndFriendCode(server.URL, reclaimUUID, "some-api-key-ignored", requestedFriendCode)
+	if err != nil {
+		t.Fatalf("Failed to reclaim user with requested friend code: %v", err)
+	}
+
+	if statusCode != 201 {
+		t.Errorf("Expected status code 201, got %d", statusCode)
+	}
+
+	if user.ID != reclaimUUID {
+		t.Errorf("User ID mismatch: got %s, want %s", user.ID, reclaimUUID)
+	}
+
+	if user.FriendCode != requestedFriendCode {
+		t.Errorf("Friend code mismatch: got %s, want %s", user.FriendCode, requestedFriendCode)
+	}
+}
+
+func TestIntegrationLoginReclaimUserWithInvalidFriendCodeFallsBackToGeneratedCode(t *testing.T) {
+	db := mustConnectToIntegrationDB()
+	defer db.Close()
+
+	server := httptest.NewServer(setupTestRoutes(db))
+	defer server.Close()
+
+	reclaimUUID := uuid.New().String()
+	invalidFriendCode := "not-a-code"
+
+	user, statusCode, err := loginWithUserIDAndAPIKeyAndFriendCode(server.URL, reclaimUUID, "some-api-key-ignored", invalidFriendCode)
+	if err != nil {
+		t.Fatalf("Failed to reclaim user with invalid friend code: %v", err)
+	}
+
+	if statusCode != 201 {
+		t.Errorf("Expected status code 201, got %d", statusCode)
+	}
+
+	if user.FriendCode == invalidFriendCode {
+		t.Fatalf("Expected invalid friend code %q to be replaced", invalidFriendCode)
+	}
+
+	if !friendCodeRegex.MatchString(user.FriendCode) {
+		t.Fatalf("Expected fallback friend code to match required format, got %q", user.FriendCode)
+	}
+}
+
 func TestIntegrationLoginReclaimDeletedUser(t *testing.T) {
 	db := mustConnectToIntegrationDB()
 	defer db.Close()

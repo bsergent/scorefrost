@@ -66,6 +66,7 @@ type LoginRequest struct {
 	GameID      string  `json:"game_id"`
 	GameVersion string  `json:"game_version"`
 	UserID      *string `json:"user_id,omitempty"`
+	FriendCode  *string `json:"friend_code,omitempty"`
 }
 
 // UpdateDisplayNameRequest represents the JSON request body for PUT /user/name
@@ -165,7 +166,7 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 
 		// User not in database, reclaim with given UUID and new API key
 		if err.Error() == "user not found" {
-			userFull, err = reclaimUserWithID(db, requestedUserID, req.GameVersion)
+			userFull, err = reclaimUserWithID(db, requestedUserID, req.GameVersion, req.FriendCode)
 
 			if err != nil {
 				// Unknown error
@@ -271,6 +272,9 @@ func generateRandomDisplayName() (string, error) {
 	return fmt.Sprintf("%s %s", adjectives[adjIndex.Int64()], nouns[nounIndex.Int64()]), nil
 }
 
+// Definition of what a friend code must look like, e.g. ABCD-EF01
+var friendCodeRegex = regexp.MustCompile(`^[A-Z0-9]{4}-[A-Z0-9]{4}$`)
+
 // generateFriendCode creates a random 8-character alphanumeric friend code in format XXXX-XXXX
 func generateFriendCode() (string, error) {
 	const charset = "ABCDEFGHJKMNPQRSTUVWXYZ123456789"
@@ -291,7 +295,7 @@ func generateFriendCode() (string, error) {
 
 // tryCreateUser repeatedly attempts to create a user until the database accepts
 // the generated friend code or the retry limit is reached.
-func tryCreateUser(db *sql.DB, userID, apiKey, gameVersion string) (*UserFull, error) {
+func tryCreateUser(db *sql.DB, userID, apiKey, gameVersion string, friendCode *string) (*UserFull, error) {
 	const maxRetries = 10
 
 	// Generate the API key hash once per user creation attempt sequence.
@@ -305,17 +309,31 @@ func tryCreateUser(db *sql.DB, userID, apiKey, gameVersion string) (*UserFull, e
 		return nil, fmt.Errorf("failed to generate display name: %w", err)
 	}
 
+	if friendCode != nil {
+		// Apply basic formatting
+		*friendCode = strings.ToUpper(strings.TrimSpace(*friendCode))
+
+		// Invalidate provided friend code if it doesn't match the required format.
+		if !friendCodeRegex.MatchString(*friendCode) {
+			friendCode = nil
+		}
+	}
+
 	for range maxRetries {
-		friendCode, err := generateFriendCode()
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate friend code: %w", err)
+		// Generate a new friend code if none pending
+		if friendCode == nil {
+			generatedFriendCode, genErr := generateFriendCode()
+			if genErr != nil {
+				return nil, fmt.Errorf("failed to generate friend code: %w", genErr)
+			}
+			friendCode = &generatedFriendCode
 		}
 
 		var returnedID string
 		err = db.QueryRow(
 			"SELECT create_user($1, $2, $3, $4, $5)",
 			userID,
-			friendCode,
+			*friendCode,
 			displayName,
 			apiKeyHash,
 			gameVersion,
@@ -327,6 +345,9 @@ func tryCreateUser(db *sql.DB, userID, apiKey, gameVersion string) (*UserFull, e
 		if !isDuplicateKeyError(err) {
 			return nil, fmt.Errorf("failed to create user: %w", err)
 		}
+
+		// Reset friend code to generate a new one on the next iteration
+		friendCode = nil
 	}
 
 	return nil, fmt.Errorf("failed to create user after %d attempts", maxRetries)
@@ -432,11 +453,11 @@ func createNewUser(db *sql.DB, gameVersion string) (*UserFull, error) {
 
 	// Try to create the user, retrying only when the database reports a duplicate
 	// friend code.
-	return tryCreateUser(db, userID.String(), apiKey, gameVersion)
+	return tryCreateUser(db, userID.String(), apiKey, gameVersion, nil)
 }
 
 // Helper function to reclaim a user with a given ID (for disaster recovery)
-func reclaimUserWithID(db *sql.DB, userID, gameVersion string) (*UserFull, error) {
+func reclaimUserWithID(db *sql.DB, userID, gameVersion string, requestedFriendCode *string) (*UserFull, error) {
 	// Generate a new API key
 	// We intentionally do generate a new API key instead of reusing the provided one
 	// as we cannot guarantee that the provided key is cryptographically random. By
@@ -450,7 +471,7 @@ func reclaimUserWithID(db *sql.DB, userID, gameVersion string) (*UserFull, error
 
 	// Try to reclaim the user, retrying only when the database reports a duplicate
 	// friend code.
-	return tryCreateUser(db, userID, apiKey, gameVersion)
+	return tryCreateUser(db, userID, apiKey, gameVersion, requestedFriendCode)
 }
 
 // Helper function to authenticate user by ID and API key

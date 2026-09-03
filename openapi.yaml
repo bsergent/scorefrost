@@ -148,6 +148,8 @@ paths:
           - User exists with matching API key: 200 OK (authentication)
           - User exists with wrong API key: 401 Unauthorized
           - User doesn't exist: 201 Created (reclaim user with new API key)
+          - Optional `friend_code` may be provided for reclaim
+          - Empty, invalid, or already-in-use `friend_code` values are silently ignored and replaced with a generated valid unique friend code
       tags:
         - Users
       security: []
@@ -631,6 +633,12 @@ components:
           nullable: true
           description: Optional private user ID (UUID). Required when authenticating with an API key. Ignored when API key is omitted.
           example: "123e4567-e89b-12d3-a456-426614174000"
+        friend_code:
+          type: string
+          nullable: true
+          description: Optional preferred friend code for reclaiming a non-existent user while authenticating with an API key. If empty, invalid, or already in use, it is silently ignored and a valid unique friend code is generated instead.
+          pattern: '^[A-Z0-9]{4}-[A-Z0-9]{4}$'
+          example: "ABCD-EF01"
       required:
         - game_id
         - game_version

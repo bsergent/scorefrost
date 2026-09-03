@@ -219,10 +219,19 @@ func authenticateIntegrationTestUser(baseURL string, userID string, apiKey strin
 // loginWithUserIDAndAPIKey authenticates or creates a user with provided user ID and apiKey
 // The apiKey is passed via Authorization header as Bearer token
 func loginWithUserIDAndAPIKey(baseURL string, userID string, apiKey string) (*IntegrationTestUser, int, error) {
+	return loginWithUserIDAndAPIKeyAndFriendCode(baseURL, userID, apiKey, "")
+}
+
+// loginWithUserIDAndAPIKeyAndFriendCode authenticates or creates a user with
+// provided user ID, apiKey, and optional friend code.
+func loginWithUserIDAndAPIKeyAndFriendCode(baseURL string, userID string, apiKey string, friendCode string) (*IntegrationTestUser, int, error) {
 	requestBody := map[string]interface{}{
 		"game_id":      "com.company.testgame",
 		"game_version": "1.0.0",
 		"user_id":      userID,
+	}
+	if strings.TrimSpace(friendCode) != "" {
+		requestBody["friend_code"] = friendCode
 	}
 
 	jsonData, err := json.Marshal(requestBody)
