@@ -74,6 +74,15 @@ type UpdateDisplayNameRequest struct {
 }
 
 // loginUserHandler handles POST {APIBasePath}/user requests (login/create)
+// Create new user - API key must be empty or omitted, user ID is ignored
+// - API key must be empty or omitted
+// - User ID is ignored
+// Reclaim lost user
+// - User ID must be provided. Must be valid UUID. Cannot exist in database.
+// - API key must be provided but will be ignored. A new API key will be generated and returned in the response.
+// Authenticate existing user
+// - User ID must be provided. Must be valid UUID. Must exist in database.
+// - API key must be provided and must match the stored hash for the user ID.
 func loginUserHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Parse request body
@@ -84,7 +93,7 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 		}
 		defer r.Body.Close()
 
-		// Validate required fields
+		// Validate game information fields
 		if strings.TrimSpace(req.GameID) == "" {
 			http.Error(w, "game_id is required", http.StatusBadRequest)
 			return
@@ -94,60 +103,17 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Get Authorization header
+		// Get api key from authorization header
 		auth := r.Header.Get("Authorization")
 		var apiKey string
 		if auth != "" && strings.HasPrefix(auth, "Bearer ") {
 			apiKey = strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
 		}
 
-		// Handle case where user_id is provided
-		if req.UserID != nil && strings.TrimSpace(*req.UserID) != "" {
-			requestedUserID := strings.TrimSpace(*req.UserID)
-
-			// Validate that it's a valid UUID
-			if _, err := uuid.Parse(requestedUserID); err != nil {
-				http.Error(w, "Invalid user ID format. Must be a valid UUID", http.StatusBadRequest)
-				return
-			}
-
-			// Check if API key is provided in Authorization header
-			if apiKey == "" {
-				// No API key provided for authentication
-				http.Error(w, "Unauthorized: API key required when user_id is provided", http.StatusUnauthorized)
-				return
-			}
-
-			// Try to authenticate with the provided user ID and API key
-			userFull, err := authenticateUserByID(db, requestedUserID, apiKey)
-			var statusCode int
-			if err != nil {
-				if err.Error() == "user not found" {
-					// User not found - allow reclamation of UUID with new API key
-					userFull, err = reclaimUserWithID(db, requestedUserID, req.GameVersion)
-					if err != nil {
-						log.Printf("Failed to reclaim user: %v", err)
-						http.Error(w, "Failed to reclaim user", http.StatusInternalServerError)
-						return
-					}
-					log.Printf("Reclaimed user: %s (%s)", userFull.DisplayName, userFull.FriendCode)
-					statusCode = http.StatusCreated
-				} else if err.Error() == "invalid api key" {
-					log.Printf("Invalid API key for user %s from IP %s", requestedUserID, getIPAddress(r))
-					http.Error(w, "Unauthorized: Invalid API key", http.StatusUnauthorized)
-					return
-				} else {
-					log.Printf("Authentication error: %v", err)
-					http.Error(w, "Internal server error", http.StatusInternalServerError)
-					return
-				}
-			} else {
-				statusCode = http.StatusOK
-				log.Printf("Authenticated user: %s (%s)", userFull.DisplayName, userFull.FriendCode)
-			}
-
+		// Helper function to send JSON user response and update active time
+		sendUserResponse := func(user *UserFull, statusCode int) {
 			// Update user's active time
-			if err := updateUserActiveTime(db, userFull.ID, req.GameVersion); err != nil {
+			if err := updateUserActiveTime(db, user.ID, req.GameVersion); err != nil {
 				log.Printf("Failed to update user active time: %v", err)
 				// Don't fail the request, just log the error
 			}
@@ -155,59 +121,75 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 			// Send JSON response
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(statusCode)
-			if err := json.NewEncoder(w).Encode(userFull); err != nil {
+			if err := json.NewEncoder(w).Encode(user); err != nil {
 				log.Printf("Failed to encode response: %v", err)
 			}
-			return
 		}
 
-		// Create new user or authenticate with Bearer token
-		var isNewUser bool
 		var userFull *UserFull
 		var err error
 
 		if apiKey == "" {
-			// No API key provided - create new user
+			// Create new user with random UUID and random API key
 			userFull, err = createNewUser(db, req.GameVersion)
 			if err != nil {
 				log.Printf("Failed to create new user: %v", err)
 				http.Error(w, "Failed to create user", http.StatusInternalServerError)
 				return
 			}
+
+			sendUserResponse(userFull, http.StatusCreated)
 			log.Printf("Created user: %s (%s)", userFull.DisplayName, userFull.FriendCode)
-			isNewUser = true
-		} else {
-			// API key provided - authenticate existing user or return error
-			userFull, err = authenticateUser(db, apiKey)
+			return
+		}
+
+		if req.UserID == nil || strings.TrimSpace(*req.UserID) == "" {
+			http.Error(w, "user_id is required", http.StatusBadRequest)
+			return
+		}
+
+		// Validate user ID (must be included, must be valid UUID)
+		requestedUserID := strings.TrimSpace(*req.UserID)
+		if _, err := uuid.Parse(requestedUserID); err != nil {
+			http.Error(w, "Invalid user_id format. Must be a valid UUID", http.StatusBadRequest)
+			return
+		}
+
+		// Authenticate with the provided user ID and API key
+		userFull, err = authenticateUser(db, requestedUserID, apiKey)
+		if err == nil {
+			sendUserResponse(userFull, http.StatusOK)
+			log.Printf("Authenticated user: %s (%s)", userFull.DisplayName, userFull.FriendCode)
+			return
+		}
+
+		// User not in database, reclaim with given UUID and new API key
+		if err.Error() == "user not found" {
+			userFull, err = reclaimUserWithID(db, requestedUserID, req.GameVersion)
+
 			if err != nil {
-				if err.Error() == "user not found" {
-					log.Printf("Authentication failed: Invalid API key from IP %s", getIPAddress(r))
-					http.Error(w, "Unauthorized: Invalid API key", http.StatusUnauthorized)
-					return
-				}
-				log.Printf("Authentication error: %v", err)
-				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				// Unknown error
+				log.Printf("Failed to reclaim user: %v", err)
+				http.Error(w, "Failed to reclaim user", http.StatusInternalServerError)
 				return
 			}
-			log.Printf("Authenticated user: %s (%s)", userFull.DisplayName, userFull.FriendCode)
+
+			// Reclaimed lost user
+			sendUserResponse(userFull, http.StatusCreated)
+			log.Printf("Reclaimed user: %s (%s)", userFull.DisplayName, userFull.FriendCode)
+			return
 		}
 
-		// Update user's active time
-		if err := updateUserActiveTime(db, userFull.ID, req.GameVersion); err != nil {
-			log.Printf("Failed to update user active time: %v", err)
-			// Don't fail the request, just log the error
+		// Failed authentication
+		if err.Error() == "invalid api key" {
+			log.Printf("Invalid API key for user %s from IP %s", requestedUserID, getIPAddress(r))
+			http.Error(w, "Unauthorized: Invalid API key", http.StatusUnauthorized)
+			return
 		}
 
-		// Send JSON response
-		w.Header().Set("Content-Type", "application/json")
-		statusCode := http.StatusOK
-		if isNewUser {
-			statusCode = http.StatusCreated
-		}
-		w.WriteHeader(statusCode)
-		if err := json.NewEncoder(w).Encode(userFull); err != nil {
-			log.Printf("Failed to encode response: %v", err)
-		}
+		// Unknown error
+		log.Printf("Authentication error: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
 
@@ -218,7 +200,7 @@ func getUserHandler(db *sql.DB) http.HandlerFunc {
 		friendCode := strings.TrimSpace(r.PathValue("friend_code"))
 
 		if friendCode == "" {
-			http.Error(w, "Friend code is required", http.StatusBadRequest)
+			http.Error(w, "friend_code is required", http.StatusBadRequest)
 			return
 		}
 
@@ -323,7 +305,7 @@ func tryCreateUser(db *sql.DB, userID, apiKey, gameVersion string) (*UserFull, e
 		return nil, fmt.Errorf("failed to generate display name: %w", err)
 	}
 
-	for i := 0; i < maxRetries; i++ {
+	for range maxRetries {
 		friendCode, err := generateFriendCode()
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate friend code: %w", err)
@@ -347,7 +329,7 @@ func tryCreateUser(db *sql.DB, userID, apiKey, gameVersion string) (*UserFull, e
 		}
 	}
 
-	return nil, fmt.Errorf("failed to generate unique friend code after %d attempts", maxRetries)
+	return nil, fmt.Errorf("failed to create user after %d attempts", maxRetries)
 }
 
 // isDuplicateKeyError checks if the error is a PostgreSQL unique constraint violation.
@@ -471,32 +453,8 @@ func reclaimUserWithID(db *sql.DB, userID, gameVersion string) (*UserFull, error
 	return tryCreateUser(db, userID, apiKey, gameVersion)
 }
 
-// Helper function to authenticate existing user and return UserFull details
-func authenticateUser(db *sql.DB, apiKey string) (*UserFull, error) {
-	// Hash the provided API key
-	hashedKey := hashAPIKey(apiKey)
-
-	// Look up user by API key hash
-	var userID string
-	err := db.QueryRow(`
-		SELECT id
-		FROM "user"
-		WHERE api_key_hash = $1
-	`, hashedKey).Scan(&userID)
-
-	if err == sql.ErrNoRows {
-		return nil, fmt.Errorf("user not found")
-	}
-	if err != nil {
-		return nil, fmt.Errorf("database error: %w", err)
-	}
-
-	// Create UserFull response without API key
-	return fetchUserFullObject(db, userID, "")
-}
-
 // Helper function to authenticate user by ID and API key
-func authenticateUserByID(db *sql.DB, userID, apiKey string) (*UserFull, error) {
+func authenticateUser(db *sql.DB, userID string, apiKey string) (*UserFull, error) {
 	// Hash the provided API key
 	hashedKey := hashAPIKey(apiKey)
 

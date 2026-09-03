@@ -58,7 +58,7 @@ func TestIntegrationUserAuthentication(t *testing.T) {
 	}
 
 	// Now authenticate with the API key from the new user
-	authenticatedUser, err := authenticateIntegrationTestUser(server.URL, newUser.APIKey)
+	authenticatedUser, err := authenticateIntegrationTestUser(server.URL, newUser.ID, newUser.APIKey)
 	if err != nil {
 		t.Fatalf("Failed to authenticate user: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestIntegrationUserAuthentication(t *testing.T) {
 	}
 
 	// Test authentication with invalid API key
-	_, err = authenticateIntegrationTestUser(server.URL, "invalid-api-key")
+	_, err = authenticateIntegrationTestUser(server.URL, newUser.ID, "invalid-api-key")
 	if err == nil {
 		t.Error("Authentication with invalid API key should fail")
 	}
@@ -892,18 +892,29 @@ func TestIntegrationLoginWithUserIDNoAPIKey(t *testing.T) {
 	server := httptest.NewServer(setupTestRoutes(db))
 	defer server.Close()
 
-	// Create a user first
-	originalUser, err := createIntegrationTestUser(server.URL)
+	requestedUserID := uuid.New().String()
+
+	// No api_key means create user flow; provided user_id is ignored
+	user, statusCode, err := loginWithUserID(server.URL, requestedUserID)
 	if err != nil {
-		t.Fatalf("Failed to create user: %v", err)
+		t.Fatalf("Failed to create user without API key: %v", err)
 	}
 
-	// Try to login with user_id but no api_key
-	_, statusCode, err := loginWithUserID(server.URL, originalUser.ID)
+	// Should return 201 Created
+	if statusCode != 201 {
+		t.Errorf("Expected status code 201, got %d", statusCode)
+	}
 
-	// Should return 401 Unauthorized
-	if statusCode != 401 {
-		t.Errorf("Expected status code 401, got %d", statusCode)
+	if user.APIKey == "" {
+		t.Error("API key should be included for newly created user")
+	}
+
+	if user.ID == requestedUserID {
+		t.Error("Expected server to ignore provided user_id when API key is missing")
+	}
+
+	if _, parseErr := uuid.Parse(user.ID); parseErr != nil {
+		t.Errorf("Expected created user ID to be a valid UUID, got %q", user.ID)
 	}
 }
 

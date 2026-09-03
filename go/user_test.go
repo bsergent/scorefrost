@@ -1,8 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/google/uuid"
 )
 
@@ -120,11 +126,11 @@ func TestUUIDValidation(t *testing.T) {
 		uuid  string
 		valid bool
 	}{
-		{"123e4567-e89b-12d3-a456-426614174000", true},  // Valid UUID
-		{"00000000-0000-0000-0000-000000000001", true},  // Valid UUID (all zeros except last digit)
-		{"invalid-uuid-format", false},                  // Invalid format
-		{"123e4567-e89b-12d3-a456-42661417400", false},  // Too short
-		{"", false},                                     // Empty
+		{"123e4567-e89b-12d3-a456-426614174000", true}, // Valid UUID
+		{"00000000-0000-0000-0000-000000000001", true}, // Valid UUID (all zeros except last digit)
+		{"invalid-uuid-format", false},                 // Invalid format
+		{"123e4567-e89b-12d3-a456-42661417400", false}, // Too short
+		{"", false}, // Empty
 	}
 
 	for _, tc := range testCases {
@@ -136,5 +142,139 @@ func TestUUIDValidation(t *testing.T) {
 				t.Errorf("UUID %q: expected valid=%v, got valid=%v", tc.uuid, tc.valid, isValid)
 			}
 		})
+	}
+}
+
+func TestLoginUserHandler_MissingUserIDWithAPIKey(t *testing.T) {
+	handler := loginUserHandler(nil)
+
+	requestBody := map[string]string{
+		"game_id":      "com.company.testgame",
+		"game_version": "1.0.0",
+	}
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		t.Fatalf("Failed to marshal request body: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, APIBasePath+"/user", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer some-api-key")
+
+	rr := httptest.NewRecorder()
+	handler(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status %d, got %d", http.StatusBadRequest, rr.Code)
+	}
+
+	if !strings.Contains(rr.Body.String(), "user_id is required") {
+		t.Fatalf("Expected error body to contain %q, got %q", "user_id is required", rr.Body.String())
+	}
+}
+
+func TestLoginUserHandler_InvalidUserIDWithAPIKey(t *testing.T) {
+	handler := loginUserHandler(nil)
+
+	requestBody := map[string]string{
+		"game_id":      "com.company.testgame",
+		"game_version": "1.0.0",
+		"user_id":      "not-a-uuid",
+	}
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		t.Fatalf("Failed to marshal request body: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, APIBasePath+"/user", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer some-api-key")
+
+	rr := httptest.NewRecorder()
+	handler(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("Expected status %d, got %d", http.StatusBadRequest, rr.Code)
+	}
+
+	if !strings.Contains(rr.Body.String(), "Invalid user_id format") {
+		t.Fatalf("Expected error body to contain %q, got %q", "Invalid user_id format", rr.Body.String())
+	}
+}
+
+func TestLoginUserHandler_NoAPIKey_IgnoresUserIDAndCreatesUser(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("Failed to create sqlmock DB: %v", err)
+	}
+	defer db.Close()
+
+	// create_user call from tryCreateUser
+	mock.ExpectQuery(`SELECT create_user\(\$1, \$2, \$3, \$4, \$5\)`).
+		WillReturnRows(sqlmock.NewRows([]string{"create_user"}).AddRow("generated"))
+
+	// fetchUserFullObject call
+	mock.ExpectQuery(`(?s)SELECT\s+date_time_created_utc.*FROM "user".*WHERE id = \$1`).
+		WithArgs(sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"date_time_created_utc",
+			"date_time_active_utc",
+			"game_version",
+			"display_name",
+			"friend_code",
+			"get_user_play_time_ms",
+		}).AddRow(
+			"2026-09-01T00:00:00Z",
+			"2026-09-01T00:00:00Z",
+			"1.0.0",
+			"Test Name",
+			"ABCD-EFGH",
+			123,
+		))
+
+	// touch_user_active_time call
+	mock.ExpectExec(`SELECT touch_user_active_time\(\$1, \$2\)`).
+		WithArgs(sqlmock.AnyArg(), "1.0.0").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	handler := loginUserHandler(db)
+
+	requestBody := map[string]string{
+		"game_id":      "com.company.testgame",
+		"game_version": "1.0.0",
+		"user_id":      "not-a-uuid", // intentionally invalid: should be ignored when API key is missing
+	}
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		t.Fatalf("Failed to marshal request body: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, APIBasePath+"/user", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+	handler(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("Expected status %d, got %d; body=%s", http.StatusCreated, rr.Code, rr.Body.String())
+	}
+
+	var resp UserFull
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if resp.ID == "" {
+		t.Fatalf("Expected non-empty user ID")
+	}
+	if _, err := uuid.Parse(resp.ID); err != nil {
+		t.Fatalf("Expected UUID user ID, got %q", resp.ID)
+	}
+	if resp.APIKey == "" {
+		t.Fatalf("Expected API key for created user")
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("Unmet SQL expectations: %v", err)
 	}
 }

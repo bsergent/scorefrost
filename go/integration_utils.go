@@ -169,11 +169,12 @@ func createIntegrationTestUser(baseURL string) (*IntegrationTestUser, error) {
 	return &user, nil
 }
 
-func authenticateIntegrationTestUser(baseURL string, apiKey string) (*IntegrationTestUser, error) {
+func authenticateIntegrationTestUser(baseURL string, userID string, apiKey string) (*IntegrationTestUser, error) {
 	// Create request body for user authentication
 	requestBody := map[string]string{
 		"game_id":      "com.company.testgame",
 		"game_version": "1.0.0",
+		"user_id":      userID,
 	}
 
 	jsonData, err := json.Marshal(requestBody)
@@ -219,9 +220,9 @@ func authenticateIntegrationTestUser(baseURL string, apiKey string) (*Integratio
 // The apiKey is passed via Authorization header as Bearer token
 func loginWithUserIDAndAPIKey(baseURL string, userID string, apiKey string) (*IntegrationTestUser, int, error) {
 	requestBody := map[string]interface{}{
-		"game_id":           "com.company.testgame",
-		"game_version":      "1.0.0",
-		"user_id":           userID,
+		"game_id":      "com.company.testgame",
+		"game_version": "1.0.0",
+		"user_id":      userID,
 	}
 
 	jsonData, err := json.Marshal(requestBody)
@@ -234,7 +235,7 @@ func loginWithUserIDAndAPIKey(baseURL string, userID string, apiKey string) (*In
 		return nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	// Add API key to Authorization header if provided
 	if apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
