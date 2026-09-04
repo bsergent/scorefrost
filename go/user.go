@@ -67,6 +67,7 @@ type LoginRequest struct {
 	GameVersion string  `json:"game_version"`
 	UserID      *string `json:"user_id,omitempty"`
 	FriendCode  *string `json:"friend_code,omitempty"`
+	DisplayName *string `json:"display_name,omitempty"`
 }
 
 // UpdateDisplayNameRequest represents the JSON request body for PUT /user/name
@@ -173,6 +174,13 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 				log.Printf("Failed to reclaim user: %v", err)
 				http.Error(w, "Failed to reclaim user", http.StatusInternalServerError)
 				return
+			}
+
+			// Request display name, if provided
+			if requestedDisplayName, err := sanitizeDisplayName(req.DisplayName); err == nil {
+				if err := requestDisplayName(db, userFull.ID, requestedDisplayName); err != nil {
+					log.Printf("Failed to request display name during reclaim: %v", err)
+				}
 			}
 
 			// Reclaimed lost user
@@ -384,33 +392,13 @@ func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 		}
 		defer r.Body.Close()
 
-		// Validate display name length
-		newDisplayName := strings.TrimSpace(req.DisplayName)
-		const minLength = 3
-		const maxLength = 32
-		if len(newDisplayName) < minLength || len(newDisplayName) > maxLength {
-			http.Error(w,
-				fmt.Sprintf("Display name must be between %d and %d characters", minLength, maxLength),
-				http.StatusBadRequest)
+		newDisplayName, validationErr := sanitizeDisplayName(&req.DisplayName)
+		if validationErr != nil {
+			http.Error(w, validationErr.Error(), http.StatusBadRequest)
 			return
 		}
 
-		// Validate display name characters
-		validChars := regexp.MustCompile(`^[a-zA-Z0-9 \-_]+$`)
-		if !validChars.MatchString(newDisplayName) {
-			http.Error(w,
-				"Display name can only contain letters, numbers, spaces, hyphens, and underscores",
-				http.StatusBadRequest)
-			return
-		}
-
-		// Update display name in database (sets display_name_pending)
-		_, err := db.Exec(`
-			UPDATE "user"
-			SET display_name_pending = $1,
-			    display_name_status = 0
-			WHERE id = $2
-		`, newDisplayName, authenticatedUserID)
+		err := requestDisplayName(db, authenticatedUserID, newDisplayName)
 
 		if err != nil {
 			log.Printf("Failed to update display name: %v", err)
@@ -438,6 +426,33 @@ func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 			log.Printf("Failed to encode response: %v", err)
 		}
 	}
+}
+
+// Definition of what a display name must look like, e.g. "Spirited-Rival 67_"
+var displayNameRegex = regexp.MustCompile(`^[a-zA-Z0-9 \-_]{3,32}$`)
+
+func sanitizeDisplayName(displayName *string) (string, error) {
+	if displayName == nil {
+		return "", fmt.Errorf("Display name cannot be nil")
+	}
+
+	*displayName = strings.TrimSpace(*displayName)
+
+	if !displayNameRegex.MatchString(*displayName) {
+		return "", fmt.Errorf("Display name can only contain letters, numbers, spaces, hyphens, and underscores")
+	}
+
+	return *displayName, nil
+}
+
+func requestDisplayName(db *sql.DB, userID, displayName string) error {
+	_, err := db.Exec(`
+		UPDATE "user"
+		SET display_name_pending = $1,
+		    display_name_status = 0
+		WHERE id = $2
+	`, displayName, userID)
+	return err
 }
 
 // Helper function to create a new user and return UserFull details

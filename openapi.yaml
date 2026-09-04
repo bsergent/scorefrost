@@ -150,6 +150,9 @@ paths:
           - User doesn't exist: 201 Created (reclaim user with new API key)
           - Optional `friend_code` may be provided for reclaim
           - Empty, invalid, or already-in-use `friend_code` values are silently ignored and replaced with a generated valid unique friend code
+          - Optional `display_name` may be provided for reclaim
+          - If `display_name` is valid, it is stored as a pending display name request on the reclaimed account
+          - If `display_name` is empty or invalid, it is silently ignored
       tags:
         - Users
       security: []
@@ -639,6 +642,11 @@ components:
           description: Optional preferred friend code for reclaiming a non-existent user while authenticating with an API key. If empty, invalid, or already in use, it is silently ignored and a valid unique friend code is generated instead.
           pattern: '^[A-Z0-9]{4}-[A-Z0-9]{4}$'
           example: "ABCD-EF01"
+        display_name:
+          type: string
+          nullable: true
+          description: Optional display name for reclaiming a non-existent user while authenticating with an API key. If valid, a pending display name request is created for the reclaimed account. If empty or invalid, it is silently ignored.
+          example: "NewGamerName"
       required:
         - game_id
         - game_version
