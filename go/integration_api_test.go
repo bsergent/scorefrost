@@ -3,6 +3,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -1046,6 +1049,91 @@ func TestIntegrationLoginReclaimUserWithInvalidFriendCodeFallsBackToGeneratedCod
 
 	if !friendCodeRegex.MatchString(user.FriendCode) {
 		t.Fatalf("Expected fallback friend code to match required format, got %q", user.FriendCode)
+	}
+}
+
+func TestIntegrationLoginReclaimUserWithDisplayNameCreatesPendingEntry(t *testing.T) {
+	db := mustConnectToIntegrationDB()
+	defer db.Close()
+
+	server := httptest.NewServer(setupTestRoutes(db))
+	defer server.Close()
+
+	reclaimUUID := uuid.New()
+	requestedDisplayName := DisplayName("  Reclaimed_Name_999  ")
+
+	requestBody := map[string]interface{}{
+		"game_id":      "com.company.testgame",
+		"game_version": "1.0.0",
+		"user_id":      reclaimUUID,
+		"display_name": requestedDisplayName,
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		t.Fatalf("Failed to marshal request body: %v", err)
+	}
+
+	req, err := http.NewRequest("POST", server.URL+APIBasePath+"/user", bytes.NewBuffer(jsonData))
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer some-api-key-ignored")
+
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		t.Fatalf("Failed to execute request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("Expected status code %d, got %d", http.StatusCreated, resp.StatusCode)
+	}
+
+	var reclaimedUser IntegrationTestUser
+	if err := json.NewDecoder(resp.Body).Decode(&reclaimedUser); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if reclaimedUser.ID != reclaimUUID.String() {
+		t.Fatalf("User ID mismatch: got %s, want %s", reclaimedUser.ID, reclaimUUID.String())
+	}
+
+	var currentDisplayName string
+	var pendingDisplayName string
+	var displayNameStatus int
+	err = db.QueryRow(`
+		SELECT
+			COALESCE(display_name, ''),
+			COALESCE(display_name_pending, ''),
+			display_name_status
+		FROM "user"
+		WHERE id = $1
+	`, reclaimUUID).Scan(&currentDisplayName, &pendingDisplayName, &displayNameStatus)
+	if err != nil {
+		t.Fatalf("Failed to query reclaimed user row: %v", err)
+	}
+
+	expectedPendingDisplayName, err := sanitizeDisplayName(requestedDisplayName)
+	if err != nil {
+		t.Fatalf("Test setup produced invalid display name: %v", err)
+	}
+
+	if currentDisplayName == "" {
+		t.Fatal("Expected reclaimed user to have a generated current display_name")
+	}
+
+	if pendingDisplayName != string(expectedPendingDisplayName) {
+		t.Fatalf("Pending display_name mismatch: got %q, want %q", pendingDisplayName, expectedPendingDisplayName)
+	}
+
+	if currentDisplayName == pendingDisplayName {
+		t.Fatalf("Expected current display_name (%q) to differ from pending display_name (%q)", currentDisplayName, pendingDisplayName)
+	}
+
+	if displayNameStatus != int(DisplayNameStatusPending) {
+		t.Fatalf("Expected display_name_status %d (pending), got %d", DisplayNameStatusPending, displayNameStatus)
 	}
 }
 
