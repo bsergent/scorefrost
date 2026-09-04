@@ -16,39 +16,26 @@ import (
 	"github.com/google/uuid"
 )
 
-// Word lists for random display name generation
-var adjectives = []string{
-	"Awesome", "Blazing", "Bouncy", "Brave", "Bright", "Cheerful", "Clever", "Cool",
-	"Cosmic", "Crafty", "Daring", "Dazzling", "Epic", "Fearless", "Friendly", "Funky",
-	"Frosty", "Gentle", "Giggly", "Glowing", "Golden", "Happy", "Heroic", "Jolly",
-	"Jumpy", "Legendary", "Lightning", "Lucky", "Magical", "Majestic", "Mighty", "Mystic",
-	"Noble", "Nimble", "Peppy", "Playful", "Powerful", "Quick", "Radiant", "Royal",
-	"Shiny", "Silly", "Smooth", "Snappy", "Sparkly", "Speedy", "Stellar", "Super",
-	"Swift", "Turbo", "Ultimate", "Vibrant", "Wild", "Zippy", "Zany",
-}
+// Private user identifier, should not be exposed outside of login flows. Use FriendCode for public identifiers.
+// Type alias so we can scan directly into a uuid.UUID from the database
+type UserID = uuid.UUID
 
-var nouns = []string{
-	"Archer", "Adventurer", "Bear", "Comet", "Cactus", "Dragon", "Dreamer", "Eagle",
-	"Explorer", "Falcon", "Flame", "Fox", "Gamer", "Glacier", "Hero", "Hunter",
-	"Knight", "Legend", "Lion", "Mage", "Meteor", "Ninja", "Otter", "Panda",
-	"Penguin", "Phoenix", "Pirate", "Player", "Racer", "Ranger", "Rebel", "Rocket",
-	"Samurai", "Scout", "Shadow", "Shark", "Sloth", "Spirit", "Star", "Storm",
-	"Tiger", "Titan", "Viking", "Warrior", "Wizard", "Wolf", "Wonder", "Yeti",
-}
+// Friend codes are public identifiers in format ABCD-EF01.
+type FriendCode string
 
 // User represents the base user payload used across responses.
 type User struct {
 	ApiResponse
-	ID          string `json:"id,omitempty"`
-	DisplayName string `json:"display_name"`
-	FriendCode  string `json:"friend_code"`
+	ID          *UserID     `json:"id,omitempty"`
+	DisplayName DisplayName `json:"display_name"`
+	FriendCode  FriendCode  `json:"friend_code"`
 }
 
 // AuthenticatedUser represents the private user payload returned by POST /user.
 // It includes the internal user ID, which is intentionally private outside login flows.
 type AuthenticatedUser struct {
 	User
-	ID string `json:"id"`
+	ID UserID `json:"id"`
 }
 
 // UserFull represents detailed user information returned by login
@@ -63,16 +50,16 @@ type UserFull struct {
 
 // LoginRequest represents the JSON request body for POST {APIBasePath}/user (login/create)
 type LoginRequest struct {
-	GameID      string  `json:"game_id"`
-	GameVersion string  `json:"game_version"`
-	UserID      *string `json:"user_id,omitempty"`
-	FriendCode  *string `json:"friend_code,omitempty"`
-	DisplayName *string `json:"display_name,omitempty"`
+	GameID      string       `json:"game_id"`
+	GameVersion string       `json:"game_version"`
+	UserID      *UserID      `json:"user_id,omitempty"`
+	FriendCode  *FriendCode  `json:"friend_code,omitempty"`
+	DisplayName *DisplayName `json:"display_name,omitempty"`
 }
 
 // UpdateDisplayNameRequest represents the JSON request body for PUT /user/name
 type UpdateDisplayNameRequest struct {
-	DisplayName string `json:"display_name"`
+	DisplayName DisplayName `json:"display_name"`
 }
 
 // loginUserHandler handles POST {APIBasePath}/user requests (login/create)
@@ -145,20 +132,13 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if req.UserID == nil || strings.TrimSpace(*req.UserID) == "" {
+		if req.UserID == nil {
 			http.Error(w, "user_id is required", http.StatusBadRequest)
 			return
 		}
 
-		// Validate user ID (must be included, must be valid UUID)
-		requestedUserID := strings.TrimSpace(*req.UserID)
-		if _, err := uuid.Parse(requestedUserID); err != nil {
-			http.Error(w, "Invalid user_id format. Must be a valid UUID", http.StatusBadRequest)
-			return
-		}
-
 		// Authenticate with the provided user ID and API key
-		userFull, err = authenticateUser(db, requestedUserID, apiKey)
+		userFull, err = authenticateUser(db, *req.UserID, apiKey)
 		if err == nil {
 			sendUserResponse(userFull, http.StatusOK)
 			log.Printf("Authenticated user: %s (%s)", userFull.DisplayName, userFull.FriendCode)
@@ -167,7 +147,7 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 
 		// User not in database, reclaim with given UUID and new API key
 		if err.Error() == "user not found" {
-			userFull, err = reclaimUserWithID(db, requestedUserID, req.GameVersion, req.FriendCode)
+			userFull, err = reclaimUserWithID(db, *req.UserID, req.GameVersion, req.FriendCode)
 
 			if err != nil {
 				// Unknown error
@@ -191,7 +171,7 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 
 		// Failed authentication
 		if err.Error() == "invalid api key" {
-			log.Printf("Invalid API key for user %s from IP %s", requestedUserID, getIPAddress(r))
+			log.Printf("Invalid API key for user %s from IP %s", *req.UserID, getIPAddress(r))
 			http.Error(w, "Unauthorized: Invalid API key", http.StatusUnauthorized)
 			return
 		}
@@ -206,21 +186,14 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 func getUserHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Extract friend code from URL path parameter (Go 1.22+)
-		friendCode := strings.TrimSpace(r.PathValue("friend_code"))
+		friendCode := FriendCode(strings.TrimSpace(r.PathValue("friend_code")))
 
 		if friendCode == "" {
 			http.Error(w, "friend_code is required", http.StatusBadRequest)
 			return
 		}
 
-		// Friend codes are public identifiers in format XXXX-XXXX.
-		var displayName string
-		err := db.QueryRow(`
-			SELECT COALESCE(display_name, '')
-			FROM "user"
-			WHERE friend_code = $1
-		`, friendCode).Scan(&displayName)
-
+		var displayName, err = getDisplayNameByFriendCode(db, friendCode)
 		if err == sql.ErrNoRows {
 			http.Error(w, "User not found", http.StatusNotFound)
 			return
@@ -284,7 +257,7 @@ func generateRandomDisplayName() (string, error) {
 var friendCodeRegex = regexp.MustCompile(`^[A-Z0-9]{4}-[A-Z0-9]{4}$`)
 
 // generateFriendCode creates a random 8-character alphanumeric friend code in format XXXX-XXXX
-func generateFriendCode() (string, error) {
+func generateFriendCode() (FriendCode, error) {
 	const charset = "ABCDEFGHJKMNPQRSTUVWXYZ123456789"
 	const codeLength = 8
 
@@ -298,12 +271,12 @@ func generateFriendCode() (string, error) {
 	}
 
 	// Insert dash in the middle: XXXX-XXXX
-	return fmt.Sprintf("%s-%s", string(code[:4]), string(code[4:])), nil
+	return FriendCode(fmt.Sprintf("%s-%s", string(code[:4]), string(code[4:]))), nil
 }
 
 // tryCreateUser repeatedly attempts to create a user until the database accepts
 // the generated friend code or the retry limit is reached.
-func tryCreateUser(db *sql.DB, userID, apiKey, gameVersion string, friendCode *string) (*UserFull, error) {
+func tryCreateUser(db *sql.DB, userID UserID, apiKey, gameVersion string, friendCode *FriendCode) (*UserFull, error) {
 	const maxRetries = 10
 
 	// Generate the API key hash once per user creation attempt sequence.
@@ -319,10 +292,10 @@ func tryCreateUser(db *sql.DB, userID, apiKey, gameVersion string, friendCode *s
 
 	if friendCode != nil {
 		// Apply basic formatting
-		*friendCode = strings.ToUpper(strings.TrimSpace(*friendCode))
+		*friendCode = FriendCode(strings.ToUpper(strings.TrimSpace(string(*friendCode))))
 
 		// Invalidate provided friend code if it doesn't match the required format.
-		if !friendCodeRegex.MatchString(*friendCode) {
+		if !friendCodeRegex.MatchString(string(*friendCode)) {
 			friendCode = nil
 		}
 	}
@@ -428,37 +401,10 @@ func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// Definition of what a display name must look like, e.g. "Spirited-Rival 67_"
-var displayNameRegex = regexp.MustCompile(`^[a-zA-Z0-9 \-_]{3,32}$`)
-
-func sanitizeDisplayName(displayName *string) (string, error) {
-	if displayName == nil {
-		return "", fmt.Errorf("Display name cannot be nil")
-	}
-
-	*displayName = strings.TrimSpace(*displayName)
-
-	if !displayNameRegex.MatchString(*displayName) {
-		return "", fmt.Errorf("Display name can only contain letters, numbers, spaces, hyphens, and underscores")
-	}
-
-	return *displayName, nil
-}
-
-func requestDisplayName(db *sql.DB, userID, displayName string) error {
-	_, err := db.Exec(`
-		UPDATE "user"
-		SET display_name_pending = $1,
-		    display_name_status = 0
-		WHERE id = $2
-	`, displayName, userID)
-	return err
-}
-
 // Helper function to create a new user and return UserFull details
 func createNewUser(db *sql.DB, gameVersion string) (*UserFull, error) {
 	// Generate new UUID for the user
-	userID := uuid.New()
+	userID := UserID(uuid.New())
 
 	// Generate a random 256-bit API key (32 bytes)
 	apiKey, err := generateAPIKey()
@@ -468,11 +414,11 @@ func createNewUser(db *sql.DB, gameVersion string) (*UserFull, error) {
 
 	// Try to create the user, retrying only when the database reports a duplicate
 	// friend code.
-	return tryCreateUser(db, userID.String(), apiKey, gameVersion, nil)
+	return tryCreateUser(db, userID, apiKey, gameVersion, nil)
 }
 
 // Helper function to reclaim a user with a given ID (for disaster recovery)
-func reclaimUserWithID(db *sql.DB, userID, gameVersion string, requestedFriendCode *string) (*UserFull, error) {
+func reclaimUserWithID(db *sql.DB, userID UserID, gameVersion string, requestedFriendCode *FriendCode) (*UserFull, error) {
 	// Generate a new API key
 	// We intentionally do generate a new API key instead of reusing the provided one
 	// as we cannot guarantee that the provided key is cryptographically random. By
@@ -490,7 +436,7 @@ func reclaimUserWithID(db *sql.DB, userID, gameVersion string, requestedFriendCo
 }
 
 // Helper function to authenticate user by ID and API key
-func authenticateUser(db *sql.DB, userID string, apiKey string) (*UserFull, error) {
+func authenticateUser(db *sql.DB, userID UserID, apiKey string) (*UserFull, error) {
 	// Hash the provided API key
 	hashedKey := hashAPIKey(apiKey)
 
@@ -519,7 +465,7 @@ func authenticateUser(db *sql.DB, userID string, apiKey string) (*UserFull, erro
 }
 
 // Helper function to create UserFull struct with calculated play time
-func fetchUserFullObject(db *sql.DB, userID, apiKey string) (*UserFull, error) {
+func fetchUserFullObject(db *sql.DB, userID UserID, apiKey string) (*UserFull, error) {
 	// Query user details with calculated play time
 	var createdTime, activeTime, gameVersion, displayName, friendCode sql.NullString
 	var playTime int
@@ -543,8 +489,8 @@ func fetchUserFullObject(db *sql.DB, userID, apiKey string) (*UserFull, error) {
 	userFull := &UserFull{
 		AuthenticatedUser: AuthenticatedUser{
 			User: User{
-				FriendCode:  friendCode.String,
-				DisplayName: displayName.String,
+				FriendCode:  FriendCode(friendCode.String),
+				DisplayName: DisplayName(displayName.String),
 			},
 			ID: userID,
 		},
@@ -563,7 +509,7 @@ func fetchUserFullObject(db *sql.DB, userID, apiKey string) (*UserFull, error) {
 }
 
 // Helper function to update user's active time using stored procedure
-func updateUserActiveTime(db *sql.DB, userID, gameVersion string) error {
+func updateUserActiveTime(db *sql.DB, userID UserID, gameVersion string) error {
 	_, err := db.Exec("SELECT touch_user_active_time($1, $2)", userID, gameVersion)
 	return err
 }

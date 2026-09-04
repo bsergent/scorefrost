@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/google/uuid"
 )
 
 func TestAdminMiddleware(t *testing.T) {
@@ -22,21 +23,21 @@ func TestAdminMiddleware(t *testing.T) {
 	}{
 		{
 			name:           "dev user access allowed",
-			userID:         devUserID,
+			userID:         uuid.UUID(devUserID).String(),
 			hasAuth:        true,
 			expectedStatus: http.StatusOK,
 			expectedBody:   "success",
 		},
 		{
 			name:           "non-dev user access forbidden",
-			userID:         "some-other-user-id",
+			userID:         uuid.New().String(),
 			hasAuth:        true,
 			expectedStatus: http.StatusForbidden,
 			expectedBody:   "Forbidden: Admin access required",
 		},
 		{
 			name:           "no authorization header",
-			userID:         "",
+			userID:         uuid.New().String(),
 			hasAuth:        false,
 			expectedStatus: http.StatusUnauthorized,
 			expectedBody:   "Unauthorized: Missing or invalid Authorization header",
@@ -113,8 +114,8 @@ func TestGetPendingDisplayNamesHandler_WithRouting(t *testing.T) {
 			mockRows: sqlmock.NewRows([]string{
 				"user_id", "friend_code", "current_display_name", "pending_display_name", "display_name_status",
 			}).
-				AddRow("user1", "ABC123", "OldName1", "NewName1", 1).
-				AddRow("user2", "DEF456", "OldName2", "NewName2", 1),
+				AddRow(uuid.New(), "ABC123", "OldName1", "NewName1", 1).
+				AddRow(uuid.New(), "DEF456", "OldName2", "NewName2", 1),
 			expectedStatus: http.StatusOK,
 			expectedCount:  2,
 			shouldHaveData: true,
@@ -234,7 +235,7 @@ func TestEvaluateDisplayNameHandler_WithRouting(t *testing.T) {
 	}{
 		{
 			name:           "approve display name success",
-			userID:         "test-user-id",
+			userID:         string(devUserID.String()),
 			requestBody:    EvaluateDisplayNameRequest{Approve: true},
 			approve:        true,
 			mockResult:     []interface{}{"ApprovedName", 2},
@@ -244,7 +245,7 @@ func TestEvaluateDisplayNameHandler_WithRouting(t *testing.T) {
 		},
 		{
 			name:           "reject display name success",
-			userID:         "test-user-id",
+			userID:         string(devUserID.String()),
 			requestBody:    EvaluateDisplayNameRequest{Approve: false},
 			approve:        false,
 			mockResult:     []interface{}{"OriginalName", 0},
@@ -254,7 +255,7 @@ func TestEvaluateDisplayNameHandler_WithRouting(t *testing.T) {
 		},
 		{
 			name:           "invalid JSON body",
-			userID:         "test-user-id",
+			userID:         string(devUserID.String()),
 			requestBody:    "invalid json",
 			expectedStatus: http.StatusBadRequest,
 			expectedMsg:    "Invalid request body",
@@ -354,7 +355,7 @@ func TestEvaluateDisplayNameHandler_WithRouting(t *testing.T) {
 					t.Fatalf("Failed to decode response: %v", err)
 				}
 
-				if response.ID != tt.userID {
+				if uuid.UUID(*response.ID).String() != tt.userID {
 					t.Errorf("Expected user ID %s, got %s", tt.userID, response.ID)
 				}
 
@@ -386,7 +387,7 @@ func TestEvaluateDisplayNameHandler_WithRouting(t *testing.T) {
 func TestAdminTypes(t *testing.T) {
 	t.Run("PendingDisplayName struct", func(t *testing.T) {
 		pending := PendingDisplayName{
-			UserID:             "test-user",
+			UserID:             devUserID,
 			FriendCode:         "ABC123",
 			CurrentDisplayName: "OldName",
 			PendingDisplayName: "NewName",
@@ -435,7 +436,7 @@ func TestAdminTypes(t *testing.T) {
 			ApiResponse: ApiResponse{
 				Message: "approved",
 			},
-			ID:          "test-user",
+			ID:          &devUserID,
 			DisplayName: "TestName",
 			FriendCode:  "ABCD-1234",
 		}
@@ -455,16 +456,8 @@ func TestAdminTypes(t *testing.T) {
 		if unmarshaled.Message != resp.Message {
 			t.Errorf("Expected Message %s, got %s", resp.Message, unmarshaled.Message)
 		}
-		if unmarshaled.ID != resp.ID {
-			t.Errorf("Expected ID %s, got %s", resp.ID, unmarshaled.ID)
+		if *unmarshaled.ID != *resp.ID {
+			t.Errorf("Expected user ID %s, got %s", *resp.ID, *unmarshaled.ID)
 		}
 	})
-}
-
-// Test dev user constant
-func TestDevUserConstant(t *testing.T) {
-	expected := "00000000-0000-0000-0000-000000000001"
-	if devUserID != expected {
-		t.Errorf("Expected devUserID %s, got %s", expected, devUserID)
-	}
 }

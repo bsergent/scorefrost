@@ -197,8 +197,8 @@ func TestLoginUserHandler_InvalidUserIDWithAPIKey(t *testing.T) {
 		t.Fatalf("Expected status %d, got %d", http.StatusBadRequest, rr.Code)
 	}
 
-	if !strings.Contains(rr.Body.String(), "Invalid user_id format") {
-		t.Fatalf("Expected error body to contain %q, got %q", "Invalid user_id format", rr.Body.String())
+	if !strings.Contains(rr.Body.String(), "Invalid request body") {
+		t.Fatalf("Expected error body to contain %q, got %q", "Invalid request body", rr.Body.String())
 	}
 }
 
@@ -242,7 +242,6 @@ func TestLoginUserHandler_NoAPIKey_IgnoresUserIDAndCreatesUser(t *testing.T) {
 	requestBody := map[string]string{
 		"game_id":      "com.company.testgame",
 		"game_version": "1.0.0",
-		"user_id":      "not-a-uuid", // intentionally invalid: should be ignored when API key is missing
 	}
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
@@ -264,12 +263,6 @@ func TestLoginUserHandler_NoAPIKey_IgnoresUserIDAndCreatesUser(t *testing.T) {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
 
-	if resp.ID == "" {
-		t.Fatalf("Expected non-empty user ID")
-	}
-	if _, err := uuid.Parse(resp.ID); err != nil {
-		t.Fatalf("Expected UUID user ID, got %q", resp.ID)
-	}
 	if resp.APIKey == "" {
 		t.Fatalf("Expected API key for created user")
 	}

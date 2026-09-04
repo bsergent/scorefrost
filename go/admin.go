@@ -6,9 +6,11 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
-const devUserID = "00000000-0000-0000-0000-000000000001"
+var devUserID = UserID(uuid.MustParse("00000000-0000-0000-0000-000000000001"))
 
 // adminMiddleware ensures only the dev user can access admin endpoints
 func adminMiddleware(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
@@ -32,15 +34,6 @@ func adminMiddleware(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
 	})
 }
 
-// PendingDisplayName represents a pending display name change
-type PendingDisplayName struct {
-	UserID             string `json:"user_id"`
-	FriendCode         string `json:"friend_code"`
-	CurrentDisplayName string `json:"current_display_name"`
-	PendingDisplayName string `json:"pending_display_name"`
-	DisplayNameStatus  int    `json:"display_name_status"`
-}
-
 // EvaluateDisplayNameRequest represents the request body for PUT /admin/names/{userID}
 type EvaluateDisplayNameRequest struct {
 	Approve bool `json:"approve"`
@@ -55,33 +48,9 @@ type GetPendingDisplayNamesResponse struct {
 // getPendingDisplayNamesHandler handles GET /admin/names
 func getPendingDisplayNamesHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Call stored procedure to get all pending display names
-		rows, err := db.Query(`SELECT * FROM get_pending_display_names()`)
+		pendingNames, err := getPendingDisplayNames(db)
+
 		if err != nil {
-			log.Printf("Failed to query pending display names: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-		defer rows.Close()
-
-		// Collect all pending names
-		var pendingNames []PendingDisplayName
-		for rows.Next() {
-			var pending PendingDisplayName
-			if err := rows.Scan(
-				&pending.UserID,
-				&pending.FriendCode,
-				&pending.CurrentDisplayName,
-				&pending.PendingDisplayName,
-				&pending.DisplayNameStatus,
-			); err != nil {
-				log.Printf("Failed to scan pending display name: %v", err)
-				continue
-			}
-			pendingNames = append(pendingNames, pending)
-		}
-
-		if err := rows.Err(); err != nil {
 			log.Printf("Error iterating pending display names: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
@@ -105,12 +74,15 @@ func getPendingDisplayNamesHandler(db *sql.DB) http.HandlerFunc {
 // evaluateDisplayNameHandler handles PUT /admin/names/{user_id}
 func evaluateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		var err error
+
 		// Extract user ID from URL path parameter (Go 1.22+)
-		userID := r.PathValue("user_id")
-		if userID == "" {
-			http.Error(w, "User ID is required", http.StatusBadRequest)
+		userIdStr, err := uuid.Parse(r.PathValue("user_id"))
+		if err != nil {
+			http.Error(w, "Invalid user ID", http.StatusBadRequest)
 			return
 		}
+		userId := UserID(userIdStr)
 
 		// Parse request body
 		var req EvaluateDisplayNameRequest
@@ -121,20 +93,16 @@ func evaluateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 		defer r.Body.Close()
 
 		// Call appropriate stored procedure based on approval decision
-		var finalDisplayName string
-		var newStatus int
+		var finalDisplayName DisplayName
 		var statusMessage string
-		var err error
 
 		if req.Approve {
 			// Call approve_display_name stored procedure
-			err = db.QueryRow(`SELECT * FROM approve_display_name($1)`, userID).
-				Scan(&finalDisplayName, &newStatus)
+			finalDisplayName, err = approveDisplayName(db, userId, DisplayNameStatusApproved)
 			statusMessage = "approved"
 		} else {
 			// Call reject_display_name stored procedure
-			err = db.QueryRow(`SELECT * FROM reject_display_name($1)`, userID).
-				Scan(&finalDisplayName, &newStatus)
+			finalDisplayName, err = rejectDisplayName(db, userId)
 			statusMessage = "rejected"
 		}
 
@@ -159,7 +127,7 @@ func evaluateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 			ApiResponse: ApiResponse{
 				Message: statusMessage,
 			},
-			ID:          userID,
+			ID:          &userId,
 			DisplayName: finalDisplayName,
 		}
 
@@ -170,6 +138,6 @@ func evaluateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 			log.Printf("Failed to encode response: %v", err)
 		}
 
-		log.Printf("Display name %s for user %s by admin", statusMessage, userID)
+		log.Printf("Display name %s for user %s by admin", statusMessage, userId)
 	}
 }
