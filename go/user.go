@@ -157,9 +157,11 @@ func loginUserHandler(db *sql.DB) http.HandlerFunc {
 			}
 
 			// Request display name, if provided
-			if requestedDisplayName, err := sanitizeDisplayName(req.DisplayName); err == nil {
-				if err := requestDisplayName(db, userFull.ID, requestedDisplayName); err != nil {
-					log.Printf("Failed to request display name during reclaim: %v", err)
+			if req.DisplayName != nil {
+				if requestedDisplayName, err := sanitizeDisplayName(*req.DisplayName); err == nil {
+					if err := requestDisplayName(db, userFull.ID, requestedDisplayName); err != nil {
+						log.Printf("Failed to request display name during reclaim: %v", err)
+					}
 				}
 			}
 
@@ -365,7 +367,7 @@ func updateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 		}
 		defer r.Body.Close()
 
-		newDisplayName, validationErr := sanitizeDisplayName(&req.DisplayName)
+		newDisplayName, validationErr := sanitizeDisplayName(req.DisplayName)
 		if validationErr != nil {
 			http.Error(w, validationErr.Error(), http.StatusBadRequest)
 			return

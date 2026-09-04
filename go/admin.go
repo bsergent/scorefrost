@@ -98,7 +98,7 @@ func evaluateDisplayNameHandler(db *sql.DB) http.HandlerFunc {
 
 		if req.Approve {
 			// Call approve_display_name stored procedure
-			finalDisplayName, err = approveDisplayName(db, userId, DisplayNameStatusApproved)
+			finalDisplayName, err = approveDisplayName(db, userId)
 			statusMessage = "approved"
 		} else {
 			// Call reject_display_name stored procedure

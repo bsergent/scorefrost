@@ -50,18 +50,14 @@ type PendingDisplayName struct {
 // Definition of what a display name must look like, e.g. "Spirited-Rival 67_"
 var displayNameRegex = regexp.MustCompile(`^[a-zA-Z0-9 \-_]{3,32}$`)
 
-func sanitizeDisplayName(displayName *DisplayName) (DisplayName, error) {
-	if displayName == nil {
-		return "", fmt.Errorf("Display name cannot be nil")
-	}
+func sanitizeDisplayName(displayName DisplayName) (DisplayName, error) {
+	sanitized := DisplayName(strings.TrimSpace(string(displayName)))
 
-	*displayName = DisplayName(strings.TrimSpace(string(*displayName)))
-
-	if !displayNameRegex.MatchString(string(*displayName)) {
+	if !displayNameRegex.MatchString(string(sanitized)) {
 		return "", fmt.Errorf("Display name can only contain letters, numbers, spaces, hyphens, and underscores")
 	}
 
-	return DisplayName(*displayName), nil
+	return sanitized, nil
 }
 
 // Get the display name for a user by their user ID
@@ -126,7 +122,7 @@ func requestDisplayName(db *sql.DB, userId UserID, displayName DisplayName) erro
 	return err
 }
 
-func approveDisplayName(db *sql.DB, userId UserID, status DisplayNameStatus) (DisplayName, error) {
+func approveDisplayName(db *sql.DB, userId UserID) (DisplayName, error) {
 	var finalDisplayName DisplayName
 	var newStatus DisplayNameStatus
 	err := db.QueryRow(`SELECT * FROM approve_display_name($1)`, userId).
