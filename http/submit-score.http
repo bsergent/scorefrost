@@ -1,5 +1,5 @@
 ### Submit Score
-POST {{host}}/api/{{api_version}}/score/submit
+PUT {{host}}/api/{{api_version}}/score
 Content-Type: application/json
 Authorization: Bearer {{dev_api_key}}
 
@@ -18,7 +18,7 @@ Authorization: Bearer {{dev_api_key}}
 }
 
 ### Submit Score
-POST {{host}}/api/{{api_version}}/score/submit
+PUT {{host}}/api/{{api_version}}/score
 Content-Type: application/json
 Authorization: Bearer Bf00rff45ppEUm9actOzSHpnW8NaQjWtwO460x34CoY=
 

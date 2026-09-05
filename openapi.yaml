@@ -268,8 +268,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v2/score/submit:
-    post:
+  /api/v2/score:
+    put:
       summary: Submit Score
       description: Submits a new score for a level
       tags:
