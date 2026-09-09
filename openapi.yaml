@@ -22,7 +22,7 @@ info:
     
     ## Rate Limiting
     
-    All endpoints are rate-limited to 100 requests per minute per IP address.
+    All endpoints are rate-limited to 20 requests per minute per IP address by default, configurable via `.env` entry.
     
     ## Score Types
     
@@ -39,7 +39,7 @@ info:
     - `user.friend_code` is a public, unique, human-readable identifier used to find players.
       Friend codes are visible in leaderboard payloads, identify the requester in returned score entries,
       and can be exchanged outside of the game to quickly find people.
-  version: 0.2.0
+  version: 0.2.1
   contact:
     name: ScoreFrost API Support
   license:
