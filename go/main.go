@@ -103,7 +103,7 @@ func connectToDB() (*sql.DB, error) {
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		dbHost, dbPort, dbUser, dbPassword, dbName,
 	)
-	log.Printf("Connection String: %s", dsn)
+	// log.Printf("Connection String: %s", dsn)
 
 	var db *sql.DB
 	var err error
