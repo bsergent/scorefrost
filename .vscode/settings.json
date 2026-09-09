@@ -10,5 +10,14 @@
     "**/.git": true,
     "**/node_modules": true,
     "**/*.exe": true
+  },
+  "workbench.colorCustomizations": {
+    "titleBar.activeBackground": "#163559",
+    "titleBar.activeForeground": "#ffffff",
+    "titleBar.inactiveBackground": "#0f243d",
+    "activityBar.background": "#0f243d",
+    "activityBar.foreground": "#ffffff",
+    "statusBar.background": "#163559",
+    "statusBar.foreground": "#ffffff"
   }
 }

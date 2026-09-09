@@ -1,43 +1,44 @@
 ### GET Leaderboard - Basic Global Leaderboard (All Score Types)
-GET {{host}}/api/v1/score/leaderboard?levels=level1,level2.3&scope=global&offset=0&size=10
+GET {{host}}/api/{{api_version}}/score/leaderboard?levels=level1,level2.3&scope=global&offset=0&size=10
 Authorization: Bearer {{dev_api_key}}
 
 ### GET Leaderboard - Specific Score Type (Time Leaderboard)
-GET {{host}}/api/v1/score/leaderboard?levels=level1.1,level2.2&scope=global&score_type=time_ms&offset=0&size=10
+GET {{host}}/api/{{api_version}}/score/leaderboard?levels=level1.1,level2.2&scope=global&score_type=time_ms&offset=0&size=10
 Authorization: Bearer {{dev_api_key}}
 
 ### GET Leaderboard - Personal Leaderboard with Score Type
-GET {{host}}/api/v1/score/leaderboard?levels=level1.1,level2.2&scope=personal&score_type=time_ms&offset=10&size=5
+GET {{host}}/api/{{api_version}}/score/leaderboard?levels=level1.1,level2.2&scope=personal&score_type=time_ms&offset=10&size=5
 Authorization: Bearer {{dev_api_key}}
 
 ### GET Leaderboard - Regional Leaderboard (All Score Types)
-GET {{host}}/api/v1/score/leaderboard?levels=puzzle_easy,puzzle_hard.5&scope=regional&offset=0&size=20
+GET {{host}}/api/{{api_version}}/score/leaderboard?levels=puzzle_easy,puzzle_hard.5&scope=regional&offset=0&size=20
 Authorization: Bearer {{dev_api_key}}
 
 ### GET Leaderboard - Friends Leaderboard for Specific Score Type
-GET {{host}}/api/v1/score/leaderboard?levels=speed_run.1,endurance.2&scope=friends&score_type=stars&offset=0&size=50
+GET {{host}}/api/{{api_version}}/score/leaderboard?levels=speed_run.1,endurance.2&scope=friends&score_type=stars&offset=0&size=50
 Authorization: Bearer {{dev_api_key}}
 
 ### GET Leaderboard - Multiple levels with mixed versions (Specific Score Type)
-GET {{host}}/api/v1/score/leaderboard?levels=level_a,level_b.1,level_c.3,level_d&scope=global&score_type=fuel&offset=20&size=25
+GET {{host}}/api/{{api_version}}/score/leaderboard?levels=level_a,level_b.1,level_c.3,level_d&scope=global&score_type=fuel_rem&offset=20&size=25
 Authorization: Bearer {{dev_api_key}}
 
 ### GET Leaderboard - Default pagination (no offset/size)
-GET {{host}}/api/v1/score/leaderboard?levels=level_001.1,level_002.1&scope=global
+GET {{host}}/api/{{api_version}}/score/leaderboard?levels=level_001.1,level_002.1&scope=global
 Authorization: Bearer {{dev_api_key}}
 
 ### GET Leaderboard - Large page size (max allowed)
-GET {{host}}/api/v1/score/leaderboard?levels=level_001&scope=global&offset=0&size=100
+GET {{host}}/api/{{api_version}}/score/leaderboard?levels=level_001&scope=global&offset=0&size=100
 Authorization: Bearer {{dev_api_key}}
 
 ### GET Leaderboard - Missing levels parameter (should error)
-GET {{host}}/api/v1/score/leaderboard?scope=global&offset=0&size=10
+GET {{host}}/api/{{api_version}}/score/leaderboard?scope=global&offset=0&size=10
 Authorization: Bearer {{dev_api_key}}
 
 ### GET Leaderboard - Invalid scope (should error)
-GET {{host}}/api/v1/score/leaderboard?levels=level_001&scope=invalid&offset=0&size=10
+GET {{host}}/api/{{api_version}}/score/leaderboard?levels=level_001&scope=invalid&offset=0&size=10
 Authorization: Bearer {{dev_api_key}}
 
 ### Variables
 @host = http://localhost:8080
+@api_version = v2
 @dev_api_key = dev_key_change_in_production

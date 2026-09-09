@@ -29,9 +29,17 @@ info:
     Supported score types for leaderboards and best scores:
     - `time_ms` - Completion time in milliseconds (lower is better)
     - `striping` - Coverage/striping percentage (higher is better) 
-    - `fuel` - Fuel consumption (lower is better)
+    - `fuel_rem` - Fuel remaining (higher is better)
     - `stars` - Star rating achieved (higher is better)
-  version: 1.0.0
+
+    ## User Identity Model
+
+    - `user.id` is a private internal identifier primarily used for authentication and internal service operations.
+      It is only returned by `POST /api/v2/user` (create/recover/login flows).
+    - `user.friend_code` is a public, unique, human-readable identifier used to find players.
+      Friend codes are visible in leaderboard payloads, identify the requester in returned score entries,
+      and can be exchanged outside of the game to quickly find people.
+  version: 0.2.0
   contact:
     name: ScoreFrost API Support
   license:
@@ -107,7 +115,7 @@ paths:
         '301':
           description: Redirect to Swagger UI
 
-  /api/v1/openapi.json:
+  /api/v2/openapi.json:
     get:
       summary: OpenAPI Specification
       description: Returns the OpenAPI specification in JSON format
@@ -122,20 +130,63 @@ paths:
               schema:
                 type: object
 
-  /api/v1/user:
+  /api/v2/user:
     post:
-      summary: Create User
-      description: Creates a new user with auto-generated credentials
+      summary: Create, Authenticate, or Reclaim User
+      description: |
+        Creates a new user with auto-generated credentials, authenticates an existing user,
+        or recovers/reclaims a user account.
+        
+        **Behavior:**
+        - If API key is empty or omitted (no Bearer token):
+          - Create a new user and return 201 Created
+          - Any provided `user_id` is ignored
+        - If API key is provided (via Authorization header):
+          - `user_id` is required
+          - `user_id` must be a valid UUID
+        - If `user_id` and API key are provided:
+          - User exists with matching API key: 200 OK (authentication)
+          - User exists with wrong API key: 401 Unauthorized
+          - User doesn't exist: 201 Created (reclaim user with new API key)
+          - Optional `friend_code` may be provided for reclaim
+          - Empty, invalid, or already-in-use `friend_code` values are silently ignored and replaced with a generated valid unique friend code
+          - Optional `display_name` may be provided for reclaim
+          - If `display_name` is valid, it is stored as a pending display name request on the reclaimed account
+          - If `display_name` is empty or invalid, it is silently ignored
       tags:
         - Users
       security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
       responses:
-        '201':
-          description: User created successfully
+        '200':
+          description: User authenticated successfully (existing user)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateUserResponse'
+        '201':
+          description: User created successfully or reclaimed with new credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateUserResponse'
+        '400':
+          description: Invalid request (missing required fields, missing user_id when authenticating, or invalid UUID format)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized (invalid API key)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '500':
           description: Internal server error
           content:
@@ -143,22 +194,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/user/{id}:
+  /api/v2/user/{friend_code}:
     get:
-      summary: Get User
-      description: Retrieves user information by ID
+      summary: Get User by Friend Code
+      description: Retrieves public user information by friend code.
       tags:
         - Users
       security: []
       parameters:
-        - name: id
+        - name: friend_code
           in: path
           required: true
-          description: User ID (UUID)
+          description: Public friend code in XXXX-XXXX format
           schema:
             type: string
-            format: uuid
-            example: "123e4567-e89b-12d3-a456-426614174000"
+            pattern: '^[A-Z0-9]{4}-[A-Z0-9]{4}$'
+            example: "ABCD-1234"
       responses:
         '200':
           description: User information
@@ -179,7 +230,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/user/name:
+  /api/v2/user/name:
     put:
       summary: Update Display Name
       description: Requests an update to the user's display name. Must be approved to be seen by others. The user ID is obtained from the authenticated user context.
@@ -217,8 +268,8 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/score/submit:
-    post:
+  /api/v2/score:
+    put:
       summary: Submit Score
       description: Submits a new score for a level
       tags:
@@ -255,7 +306,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/score/best:
+  /api/v2/score/best:
     get:
       summary: Get Best Scores
       description: Retrieves the authenticated user's best scores
@@ -267,7 +318,8 @@ paths:
           required: false
           description: |
             Comma-separated list of level specifications in format "level_id" or "level_id.version".
-            If version is omitted, the latest version is used.
+            If version is omitted for a level, the latest version is used.
+            If this parameter is omitted entirely, returns best scores across all levels at their latest versions.
             Examples: "level1", "level1.2", "level1,level2.1,level3"
           schema:
             type: string
@@ -278,7 +330,7 @@ paths:
           description: Filter by specific score type
           schema:
             type: string
-            enum: [time_ms, striping, fuel, stars]
+            enum: [time_ms, striping, fuel_rem, stars]
             example: "time_ms"
       responses:
         '200':
@@ -306,7 +358,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/score/leaderboard:
+  /api/v2/score/leaderboard:
     get:
       summary: Get Leaderboard
       description: Retrieves leaderboard with top scores per level and score type
@@ -329,7 +381,7 @@ paths:
           description: Filter by specific score type
           schema:
             type: string
-            enum: [time_ms, striping, fuel, stars]
+            enum: [time_ms, striping, fuel_rem, stars]
             example: "time_ms"
         - name: offset
           in: query
@@ -376,7 +428,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /admin/v1/names:
+  /admin/v2/names:
     get:
       summary: Get Pending Display Names
       description: Retrieves all pending display name changes requiring admin approval
@@ -410,7 +462,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /admin/v1/names/{user_id}:
+  /admin/v2/names/{user_id}:
     put:
       summary: Evaluate Display Name
       description: Approve or reject a pending display name change
@@ -507,7 +559,7 @@ components:
         id:
           type: string
           format: uuid
-          description: Unique user identifier
+          description: Private internal user identifier for authentication and internal usage. Exposed only by POST /api/v2/user flows.
           example: "123e4567-e89b-12d3-a456-426614174000"
         display_name:
           type: string
@@ -515,7 +567,7 @@ components:
           example: "CoolGamer42"
         friend_code:
           type: string
-          description: Unique friend code in XXXX-XXXX format
+          description: Public, unique, human-readable identifier for finding and sharing users. Visible in leaderboard and user lookup payloads.
           example: "ABCD-1234"
         date_time_created_utc:
           type: string
@@ -555,23 +607,49 @@ components:
           type: string
           description: Optional status or informational message
           example: "User retrieved successfully"
-        id:
-          type: string
-          format: uuid
-          description: Unique user identifier
-          example: "123e4567-e89b-12d3-a456-426614174000"
         display_name:
           type: string
           description: User's display name
           example: "CoolGamer42"
         friend_code:
           type: string
-          description: Unique 6-character friend code
-          example: "ABC123"
+          description: Public friend code for user discovery and social sharing
+          example: "ABCD-1234"
       required:
-        - id
         - display_name
         - friend_code
+
+    LoginRequest:
+      type: object
+      properties:
+        game_id:
+          type: string
+          description: Game identifier
+          example: "com.company.mygame"
+        game_version:
+          type: string
+          description: Version of the game client
+          example: "1.2.3"
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional private user ID (UUID). Required when authenticating with an API key. Ignored when API key is omitted.
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        friend_code:
+          type: string
+          nullable: true
+          description: Optional preferred friend code for reclaiming a non-existent user while authenticating with an API key. If empty, invalid, or already in use, it is silently ignored and a valid unique friend code is generated instead.
+          pattern: '^[A-Z0-9]{4}-[A-Z0-9]{4}$'
+          example: "ABCD-EF01"
+        display_name:
+          type: string
+          nullable: true
+          description: Optional display name for reclaiming a non-existent user while authenticating with an API key. If valid, a pending display name request is created for the reclaimed account. If empty or invalid, it is silently ignored.
+          example: "NewGamerName"
+      required:
+        - game_id
+        - game_version
 
     UpdateDisplayNameRequest:
       type: object
@@ -593,22 +671,16 @@ components:
           type: string
           description: Status message
           example: "Display name updated and pending approval"
-        id:
-          type: string
-          format: uuid
-          description: User ID
-          example: "123e4567-e89b-12d3-a456-426614174000"
         display_name:
           type: string
           description: Updated display name
           example: "NewGamerName"
         friend_code:
           type: string
-          description: User's friend code
+          description: User's public friend code
           example: "ABCD-1234"
       required:
         - message
-        - id
         - display_name
         - friend_code
 
@@ -644,7 +716,7 @@ components:
           example:
             time_ms: 15420
             striping: 95
-            fuel: 45
+            fuel_rem: 45
       required:
         - level_id
         - level_version
@@ -661,9 +733,10 @@ components:
           description: Optional status or informational message
           example: "Score submitted successfully"
         solution_id:
-          type: integer
+          type: string
+          format: uuid
           description: Unique identifier for the submitted solution
-          example: 42
+          example: "0195b031-cf3f-7bf7-8f72-c6f8ef9db41c"
       required:
         - solution_id
 
@@ -681,31 +754,25 @@ components:
         score_type:
           type: string
           description: Type of score
-          enum: [time_ms, striping, fuel, stars]
+          enum: [time_ms, striping, fuel_rem, stars]
           example: "time_ms"
         best_score:
           type: integer
           description: Best score value
           example: 15420
-        user_id:
-          type: string
-          format: uuid
-          description: User who achieved this score
-          example: "123e4567-e89b-12d3-a456-426614174000"
         display_name:
           type: string
           description: Display name of the user
           example: "CoolGamer42"
         friend_code:
           type: string
-          description: Friend code of the user
-          example: "ABC123"
+          description: Public friend code of the user
+          example: "ABCD-1234"
       required:
         - level_id
         - level_version
         - score_type
         - best_score
-        - user_id
         - display_name
         - friend_code
 
@@ -753,32 +820,26 @@ components:
         score_type:
           type: string
           description: Type of score
-          enum: [time_ms, striping, fuel, stars]
+          enum: [time_ms, striping, fuel_rem, stars]
           example: "time_ms"
         best_score:
           type: integer
           description: Best score value
           example: 15420
-        user_id:
-          type: string
-          format: uuid
-          description: User who achieved this score
-          example: "123e4567-e89b-12d3-a456-426614174000"
         display_name:
           type: string
           description: Display name of the user
           example: "CoolGamer42"
         friend_code:
           type: string
-          description: Friend code of the user
-          example: "ABC123"
+          description: Public friend code of the user
+          example: "ABCD-1234"
       required:
         - rank
         - level_id
         - level_version
         - score_type
         - best_score
-        - user_id
         - display_name
         - friend_code
 
@@ -837,15 +898,10 @@ components:
     PendingDisplayName:
       type: object
       properties:
-        user_id:
-          type: string
-          format: uuid
-          description: User ID
-          example: "123e4567-e89b-12d3-a456-426614174000"
         friend_code:
           type: string
-          description: User's friend code
-          example: "ABC123"
+          description: User's public friend code
+          example: "ABCD-1234"
         current_display_name:
           type: string
           description: Current display name
@@ -859,7 +915,6 @@ components:
           description: Status code for the pending change
           example: 1
       required:
-        - user_id
         - friend_code
         - current_display_name
         - pending_display_name

@@ -70,7 +70,9 @@ func authMiddleware(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
 		hashedKey := hashAPIKey(apiKey)
 
 		// Look up user by API key hash
-		var userID, displayName, friendCode string
+		var userID UserID
+		var displayName DisplayName
+		var friendCode FriendCode
 		err := db.QueryRow(`
 			SELECT id, COALESCE(display_name, ''), friend_code
 			FROM "user"
@@ -104,19 +106,19 @@ func authMiddleware(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
 // Helper functions to extract user info from request context
 
 // GetUserID extracts the authenticated user's ID from the request context
-func GetUserID(r *http.Request) (string, bool) {
-	userID, ok := r.Context().Value(contextKeyUserID).(string)
+func GetUserID(r *http.Request) (UserID, bool) {
+	userID, ok := r.Context().Value(contextKeyUserID).(UserID)
 	return userID, ok
 }
 
 // GetDisplayName extracts the authenticated user's display name from the request context
-func GetDisplayName(r *http.Request) (string, bool) {
-	displayName, ok := r.Context().Value(contextKeyDisplayName).(string)
+func GetDisplayName(r *http.Request) (DisplayName, bool) {
+	displayName, ok := r.Context().Value(contextKeyDisplayName).(DisplayName)
 	return displayName, ok
 }
 
 // GetFriendCode extracts the authenticated user's friend code from the request context
-func GetFriendCode(r *http.Request) (string, bool) {
-	friendCode, ok := r.Context().Value(contextKeyFriendCode).(string)
+func GetFriendCode(r *http.Request) (FriendCode, bool) {
+	friendCode, ok := r.Context().Value(contextKeyFriendCode).(FriendCode)
 	return friendCode, ok
 }

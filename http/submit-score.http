@@ -1,5 +1,5 @@
 ### Submit Score
-POST {{host}}/api/v1/score/submit
+PUT {{host}}/api/{{api_version}}/score
 Content-Type: application/json
 Authorization: Bearer {{dev_api_key}}
 
@@ -12,13 +12,13 @@ Authorization: Bearer {{dev_api_key}}
   "scores": {
     "time_ms": 12500,
     "striping": 85,
-    "fuel": 750,
+    "fuel_rem": 750,
     "stars": 3
   }
 }
 
 ### Submit Score
-POST {{host}}/api/v1/score/submit
+PUT {{host}}/api/{{api_version}}/score
 Content-Type: application/json
 Authorization: Bearer Bf00rff45ppEUm9actOzSHpnW8NaQjWtwO460x34CoY=
 
@@ -36,4 +36,5 @@ Authorization: Bearer Bf00rff45ppEUm9actOzSHpnW8NaQjWtwO460x34CoY=
 
 ### Variables
 @host = http://localhost:8080
+@api_version = v2
 @dev_api_key = dev_key_change_in_production

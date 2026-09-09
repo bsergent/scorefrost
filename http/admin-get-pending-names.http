@@ -1,3 +1,7 @@
 ### Get all pending display names (requires dev user authentication)
-GET http://localhost:8080/admin/v1/names
+GET {{host}}/admin/{{admin_api_version}}/names
 Authorization: Bearer dev_key_change_in_production
+
+### Variables
+@host = http://localhost:8080
+@admin_api_version = v2

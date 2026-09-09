@@ -22,12 +22,14 @@ import (
 
 // Integration test configuration
 type IntegrationConfig struct {
-	DBConnString string
-	SolutionSalt string
-	TestAPIKey   string
-	TestAPIKey2  string
-	TestUserID   string
-	TestUserID2  string
+	DBConnString    string
+	SolutionSalt    string
+	TestAPIKey      string
+	TestAPIKey2     string
+	TestUserID      string
+	TestUserID2     string
+	TestFriendCode  string
+	TestFriendCode2 string
 }
 
 // Global integration test configuration
@@ -109,6 +111,7 @@ func createIntegrationTestUsers() {
 	}
 	integrationConfig.TestAPIKey = user1.APIKey
 	integrationConfig.TestUserID = user1.ID
+	integrationConfig.TestFriendCode = user1.FriendCode
 
 	user2, err := createIntegrationTestUser(server.URL)
 	if err != nil {
@@ -116,6 +119,7 @@ func createIntegrationTestUsers() {
 	}
 	integrationConfig.TestAPIKey2 = user2.APIKey
 	integrationConfig.TestUserID2 = user2.ID
+	integrationConfig.TestFriendCode2 = user2.FriendCode
 }
 
 func mustConnectToIntegrationDB() *sql.DB {
@@ -146,7 +150,7 @@ func createIntegrationTestUser(baseURL string) (*IntegrationTestUser, error) {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	resp, err := http.Post(baseURL+"/api/v1/user", "application/json", bytes.NewBuffer(jsonData))
+	resp, err := http.Post(baseURL+APIBasePath+"/user", "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
 	}
@@ -165,11 +169,12 @@ func createIntegrationTestUser(baseURL string) (*IntegrationTestUser, error) {
 	return &user, nil
 }
 
-func authenticateIntegrationTestUser(baseURL string, apiKey string) (*IntegrationTestUser, error) {
+func authenticateIntegrationTestUser(baseURL string, userID string, apiKey string) (*IntegrationTestUser, error) {
 	// Create request body for user authentication
 	requestBody := map[string]string{
 		"game_id":      "com.company.testgame",
 		"game_version": "1.0.0",
+		"user_id":      userID,
 	}
 
 	jsonData, err := json.Marshal(requestBody)
@@ -178,7 +183,7 @@ func authenticateIntegrationTestUser(baseURL string, apiKey string) (*Integratio
 	}
 
 	// Create HTTP request with Authorization header
-	req, err := http.NewRequest("POST", baseURL+"/api/v1/user", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", baseURL+APIBasePath+"/user", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
 	}
@@ -209,6 +214,66 @@ func authenticateIntegrationTestUser(baseURL string, apiKey string) (*Integratio
 	}
 
 	return &user, nil
+}
+
+// loginWithUserIDAndAPIKey authenticates or creates a user with provided user ID and apiKey
+// The apiKey is passed via Authorization header as Bearer token
+func loginWithUserIDAndAPIKey(baseURL string, userID string, apiKey string) (*IntegrationTestUser, int, error) {
+	return loginWithUserIDAndAPIKeyAndFriendCode(baseURL, userID, apiKey, "")
+}
+
+// loginWithUserIDAndAPIKeyAndFriendCode authenticates or creates a user with
+// provided user ID, apiKey, and optional friend code.
+func loginWithUserIDAndAPIKeyAndFriendCode(baseURL string, userID string, apiKey string, friendCode string) (*IntegrationTestUser, int, error) {
+	requestBody := map[string]interface{}{
+		"game_id":      "com.company.testgame",
+		"game_version": "1.0.0",
+		"user_id":      userID,
+	}
+	if strings.TrimSpace(friendCode) != "" {
+		requestBody["friend_code"] = friendCode
+	}
+
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", baseURL+APIBasePath+"/user", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Add API key to Authorization header if provided
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+
+	// For non-success responses, read the body as a string to return error info
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, resp.StatusCode, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
+	var user IntegrationTestUser
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, resp.StatusCode, err
+	}
+
+	return &user, resp.StatusCode, nil
+}
+
+// loginWithUserID creates/authenticates a user with only a user ID (no apiKey in Authorization header)
+func loginWithUserID(baseURL string, userID string) (*IntegrationTestUser, int, error) {
+	return loginWithUserIDAndAPIKey(baseURL, userID, "")
 }
 
 // Integration test HTTP helpers
@@ -282,7 +347,7 @@ type IntegrationScoreSubmissionRequest struct {
 
 type IntegrationSolution struct {
 	Message    string `json:"message,omitempty"`
-	SolutionID int    `json:"solution_id"`
+	SolutionID string `json:"solution_id"`
 }
 
 type IntegrationBestScoreEntry struct {
@@ -329,19 +394,24 @@ type IntegrationLeaderboardResponse struct {
 
 func submitIntegrationScore(server *httptest.Server, apiKey string, request IntegrationScoreSubmissionRequest) (*IntegrationSolution, error) {
 	var response IntegrationSolution
-	err := makeAuthenticatedIntegrationRequest(server, "PUT", "/api/v1/score", apiKey, request, &response)
+	err := makeAuthenticatedIntegrationRequest(server, "PUT", APIBasePath+"/score", apiKey, request, &response)
 	return &response, err
 }
 
 func getIntegrationBestScores(server *httptest.Server, apiKey string, levels []string, scope string) (*IntegrationBestScoresResponse, error) {
 	// Build query parameters
 	params := url.Values{}
-	params.Set("levels", strings.Join(levels, ","))
+	if len(levels) > 0 {
+		params.Set("levels", strings.Join(levels, ","))
+	}
 	if scope != "" {
 		params.Set("scope", scope)
 	}
 
-	path := "/api/v1/score/best?" + params.Encode()
+	path := APIBasePath + "/score/best"
+	if encoded := params.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
 
 	var response IntegrationBestScoresResponse
 	err := makeAuthenticatedIntegrationRequest(server, "GET", path, apiKey, nil, &response)
@@ -361,7 +431,7 @@ func getIntegrationLeaderboard(server *httptest.Server, apiKey string, levels []
 	params.Set("offset", fmt.Sprintf("%d", offset))
 	params.Set("size", fmt.Sprintf("%d", size))
 
-	path := "/api/v1/score/leaderboard?" + params.Encode()
+	path := APIBasePath + "/score/leaderboard?" + params.Encode()
 
 	var response IntegrationLeaderboardResponse
 	err := makeAuthenticatedIntegrationRequest(server, "GET", path, apiKey, nil, &response)
@@ -397,11 +467,11 @@ func assertIntegrationScoreCount(t *testing.T, response *IntegrationBestScoresRe
 	}
 }
 
-func assertIntegrationScoreUser(t *testing.T, scores []IntegrationBestScoreEntry, levelID string, scoreType string, expectedUserID string) {
+func assertIntegrationScoreFriendCode(t *testing.T, scores []IntegrationBestScoreEntry, levelID string, scoreType string, expectedFriendCode string) {
 	for _, score := range scores {
 		if score.LevelID == levelID && score.ScoreType == scoreType {
-			if score.UserID != expectedUserID {
-				t.Errorf("Expected user %s for %s/%s, got %s", expectedUserID, levelID, scoreType, score.UserID)
+			if score.FriendCode != expectedFriendCode {
+				t.Errorf("Expected friend code %s for %s/%s, got %s", expectedFriendCode, levelID, scoreType, score.FriendCode)
 			}
 			return
 		}

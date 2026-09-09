@@ -1,203 +1,106 @@
--- Initial schema migration for ScoreFrost.
--- This captures the current database state so future changes can be versioned.
+-- Migrate solution.id primary key from SERIAL/INTEGER to UUIDv7 and update score FK.
+-- Also updates dependent stored procedures to use UUID solution IDs.
 
--- User Table
-CREATE TABLE IF NOT EXISTS "user" (
-    id UUID PRIMARY KEY,
-    friend_code VARCHAR(9) UNIQUE NOT NULL,
-    display_name_pending VARCHAR(32),
-    display_name VARCHAR(32),
-    display_name_status SMALLINT NOT NULL DEFAULT 0,
-    api_key_hash VARCHAR(64) NOT NULL,
-    date_time_created_utc TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'),
-    date_time_active_utc TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'),
-    game_version VARCHAR(32),
-    CONSTRAINT chk_display_name_status CHECK (display_name_status IN (0, 1, 2))
-);
+-- Ensure extension objects live in a dedicated schema.
+CREATE SCHEMA IF NOT EXISTS ext;
 
-CREATE INDEX IF NOT EXISTS idx_user_display_name ON "user"(display_name);
-CREATE INDEX IF NOT EXISTS idx_user_api_key_hash ON "user"(api_key_hash);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_user_friend_code ON "user"(friend_code);
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pgcrypto') THEN
+        ALTER EXTENSION pgcrypto SET SCHEMA ext;
+    ELSE
+        CREATE EXTENSION pgcrypto WITH SCHEMA ext;
+    END IF;
+END;
+$$;
 
--- Score Type Table
-CREATE TABLE IF NOT EXISTS score_type (
-    id VARCHAR(16) PRIMARY KEY,
-    display_name VARCHAR(64) NOT NULL,
-    higher_is_better BOOLEAN NOT NULL DEFAULT TRUE
-);
+-- UUIDv7 generator compatible with PostgreSQL 15.
+CREATE OR REPLACE FUNCTION generate_uuid_v7()
+RETURNS UUID AS $$
+DECLARE
+    v_unix_ts_ms BIGINT;
+    v_random BYTEA;
+    v_uuid_bytes BYTEA;
+BEGIN
+    -- Unix timestamp in milliseconds (48 most-significant bits in UUIDv7).
+    v_unix_ts_ms := FLOOR(EXTRACT(EPOCH FROM clock_timestamp()) * 1000);
+    v_random := ext.gen_random_bytes(10);
+    v_uuid_bytes := E'\\x00000000000000000000000000000000'::BYTEA;
 
-CREATE INDEX IF NOT EXISTS idx_score_type_display_name ON score_type(display_name);
+    -- Timestamp bytes (big-endian, bytes 0..5).
+    v_uuid_bytes := set_byte(v_uuid_bytes, 0, ((v_unix_ts_ms >> 40) & 255)::INT);
+    v_uuid_bytes := set_byte(v_uuid_bytes, 1, ((v_unix_ts_ms >> 32) & 255)::INT);
+    v_uuid_bytes := set_byte(v_uuid_bytes, 2, ((v_unix_ts_ms >> 24) & 255)::INT);
+    v_uuid_bytes := set_byte(v_uuid_bytes, 3, ((v_unix_ts_ms >> 16) & 255)::INT);
+    v_uuid_bytes := set_byte(v_uuid_bytes, 4, ((v_unix_ts_ms >> 8) & 255)::INT);
+    v_uuid_bytes := set_byte(v_uuid_bytes, 5, (v_unix_ts_ms & 255)::INT);
 
--- Solution Table
-CREATE TABLE IF NOT EXISTS solution (
-    id SERIAL PRIMARY KEY,
-    user_id UUID NOT NULL,
-    level_id VARCHAR(16) NOT NULL,
-    level_version INTEGER NOT NULL,
-    game_version VARCHAR(32) NOT NULL,
-    solution VARCHAR(1024) NOT NULL,
-    result SMALLINT NOT NULL,
-    date_time_utc TIMESTAMP NOT NULL DEFAULT (NOW() AT TIME ZONE 'UTC'),
-    CONSTRAINT fk_solution_user FOREIGN KEY (user_id) REFERENCES "user"(id) ON DELETE CASCADE,
-    CONSTRAINT chk_result CHECK (result IN (0, 1, 2))
-);
+    -- Version 7 in high nibble of byte 6.
+    v_uuid_bytes := set_byte(v_uuid_bytes, 6, ((7 << 4) | (get_byte(v_random, 0) & 15))::INT);
+    v_uuid_bytes := set_byte(v_uuid_bytes, 7, get_byte(v_random, 1));
 
-CREATE INDEX IF NOT EXISTS idx_solution_user_id ON solution(user_id);
-CREATE INDEX IF NOT EXISTS idx_solution_level_id ON solution(level_id);
-CREATE INDEX IF NOT EXISTS idx_solution_level_version ON solution(level_id, level_version);
-CREATE INDEX IF NOT EXISTS idx_solution_game_version ON solution(game_version);
-CREATE INDEX IF NOT EXISTS idx_solution_date_time ON solution(date_time_utc);
+    -- RFC 4122 variant (10xx xxxx) in byte 8.
+    v_uuid_bytes := set_byte(v_uuid_bytes, 8, ((2 << 6) | (get_byte(v_random, 2) & 63))::INT);
 
--- Score Table
-CREATE TABLE IF NOT EXISTS score (
-    solution_id INTEGER NOT NULL,
-    type_id VARCHAR(16) NOT NULL,
-    score INTEGER NOT NULL,
-    PRIMARY KEY (solution_id, type_id),
-    CONSTRAINT fk_score_solution FOREIGN KEY (solution_id) REFERENCES solution(id) ON DELETE CASCADE,
-    CONSTRAINT fk_score_type FOREIGN KEY (type_id) REFERENCES score_type(id) ON DELETE CASCADE
-);
+    -- Remaining random bytes.
+    v_uuid_bytes := set_byte(v_uuid_bytes, 9, get_byte(v_random, 3));
+    v_uuid_bytes := set_byte(v_uuid_bytes, 10, get_byte(v_random, 4));
+    v_uuid_bytes := set_byte(v_uuid_bytes, 11, get_byte(v_random, 5));
+    v_uuid_bytes := set_byte(v_uuid_bytes, 12, get_byte(v_random, 6));
+    v_uuid_bytes := set_byte(v_uuid_bytes, 13, get_byte(v_random, 7));
+    v_uuid_bytes := set_byte(v_uuid_bytes, 14, get_byte(v_random, 8));
+    v_uuid_bytes := set_byte(v_uuid_bytes, 15, get_byte(v_random, 9));
+
+    RETURN encode(v_uuid_bytes, 'hex')::UUID;
+END;
+$$ LANGUAGE plpgsql VOLATILE;
+
+-- Drop dependent functions before replacing solution.id column.
+DROP FUNCTION IF EXISTS submit_solution_with_scores(UUID, VARCHAR(16), INTEGER, VARCHAR(32), VARCHAR(1024), SMALLINT, JSON);
+DROP FUNCTION IF EXISTS get_best_scores(UUID, JSON, VARCHAR(16));
+DROP FUNCTION IF EXISTS get_leaderboard_count(UUID, JSON, VARCHAR(16), VARCHAR(16));
+DROP FUNCTION IF EXISTS get_leaderboard(UUID, JSON, VARCHAR(16), VARCHAR(16), INTEGER, INTEGER);
+DROP FUNCTION IF EXISTS get_user_play_time_ms(UUID);
+
+-- Add replacement UUID columns and backfill existing data.
+ALTER TABLE solution ADD COLUMN id_uuid UUID;
+ALTER TABLE solution ALTER COLUMN id_uuid SET DEFAULT generate_uuid_v7();
+UPDATE solution
+SET id_uuid = generate_uuid_v7()
+WHERE id_uuid IS NULL;
+ALTER TABLE solution ALTER COLUMN id_uuid SET NOT NULL;
+
+ALTER TABLE score ADD COLUMN solution_id_uuid UUID;
+UPDATE score sc
+SET solution_id_uuid = s.id_uuid
+FROM solution s
+WHERE sc.solution_id = s.id;
+ALTER TABLE score ALTER COLUMN solution_id_uuid SET NOT NULL;
+
+-- Swap primary and foreign keys.
+ALTER TABLE score DROP CONSTRAINT IF EXISTS fk_score_solution;
+ALTER TABLE score DROP CONSTRAINT IF EXISTS score_pkey;
+ALTER TABLE solution DROP CONSTRAINT IF EXISTS solution_pkey;
+ALTER TABLE solution ALTER COLUMN id DROP DEFAULT;
+ALTER SEQUENCE IF EXISTS solution_id_seq OWNED BY NONE;
+
+ALTER TABLE solution DROP COLUMN id;
+ALTER TABLE solution RENAME COLUMN id_uuid TO id;
+ALTER TABLE solution ADD CONSTRAINT solution_pkey PRIMARY KEY (id);
+
+ALTER TABLE score DROP COLUMN solution_id;
+ALTER TABLE score RENAME COLUMN solution_id_uuid TO solution_id;
+ALTER TABLE score ADD CONSTRAINT score_pkey PRIMARY KEY (solution_id, type_id);
+ALTER TABLE score
+    ADD CONSTRAINT fk_score_solution
+    FOREIGN KEY (solution_id) REFERENCES solution(id) ON DELETE CASCADE;
 
 CREATE INDEX IF NOT EXISTS idx_score_solution_id ON score(solution_id);
-CREATE INDEX IF NOT EXISTS idx_score_type_id ON score(type_id);
-CREATE INDEX IF NOT EXISTS idx_score_value ON score(score);
 
--- User Relation Table
-CREATE TABLE IF NOT EXISTS user_relation (
-    user_id_source UUID NOT NULL,
-    user_id_target UUID NOT NULL,
-    status SMALLINT NOT NULL DEFAULT 0,
-    PRIMARY KEY (user_id_source, user_id_target),
-    CONSTRAINT fk_user_relation_source FOREIGN KEY (user_id_source) REFERENCES "user"(id) ON DELETE CASCADE,
-    CONSTRAINT fk_user_relation_target FOREIGN KEY (user_id_target) REFERENCES "user"(id) ON DELETE CASCADE,
-    CONSTRAINT chk_status CHECK (status IN (0, 1, 2)),
-    CONSTRAINT chk_no_self_relation CHECK (user_id_source != user_id_target)
-);
+-- Remove legacy serial sequence if present.
+DROP SEQUENCE IF EXISTS solution_id_seq;
 
-CREATE INDEX IF NOT EXISTS idx_user_relation_source ON user_relation(user_id_source);
-CREATE INDEX IF NOT EXISTS idx_user_relation_target ON user_relation(user_id_target);
-CREATE INDEX IF NOT EXISTS idx_user_relation_status ON user_relation(status);
-
--- Seed users
-INSERT INTO "user" (id, friend_code, display_name, display_name_status, api_key_hash)
-VALUES
-    ('00000000-0000-0000-0000-000000000000', '0000-0000', 'Anonymous', 1, 'anonymous_no_key'),
-    ('00000000-0000-0000-0000-000000000001', '0000-0001', 'Dev', 1, 'placeholder')
-ON CONFLICT (id) DO NOTHING;
-
--- Seed score types
-INSERT INTO score_type (id, display_name, higher_is_better)
-VALUES
-    ('time_ms', 'Time (Milliseconds)', FALSE),
-    ('striping', 'Striping', TRUE),
-    ('fuel_rem', 'Fuel Remaining', TRUE),
-    ('stars', 'Stars', TRUE)
-ON CONFLICT (id) DO NOTHING;
-
--- Function to create a new user
-CREATE OR REPLACE FUNCTION create_user(
-    p_id UUID,
-    p_friend_code VARCHAR(9),
-    p_display_name VARCHAR(64),
-    p_api_key_hash VARCHAR(64)
-) RETURNS UUID AS $$
-BEGIN
-    INSERT INTO "user" (id, friend_code, display_name, display_name_status, api_key_hash)
-    VALUES (p_id, p_friend_code, p_display_name, 1, p_api_key_hash);
-
-    RETURN p_id;
-END;
-$$ LANGUAGE plpgsql;
-
--- Function to get all pending display names
-CREATE OR REPLACE FUNCTION get_pending_display_names()
-RETURNS TABLE (
-    user_id UUID,
-    friend_code VARCHAR(9),
-    current_display_name VARCHAR(64),
-    pending_display_name VARCHAR(64),
-    display_name_status SMALLINT
-) AS $$
-BEGIN
-    RETURN QUERY
-    SELECT
-        id,
-        u.friend_code,
-        COALESCE(u.display_name, '')::VARCHAR(64) as current_display_name,
-        COALESCE(u.display_name_pending, '')::VARCHAR(64) as pending_display_name,
-        u.display_name_status
-    FROM "user" u
-    WHERE u.display_name_status = 0
-      AND u.display_name_pending IS NOT NULL
-      AND u.display_name_pending != ''
-    ORDER BY u.date_time_created_utc ASC;
-END;
-$$ LANGUAGE plpgsql;
-
--- Function to approve a pending display name
-CREATE OR REPLACE FUNCTION approve_display_name(p_user_id UUID)
-RETURNS TABLE (
-    final_display_name VARCHAR(64),
-    status SMALLINT
-) AS $$
-DECLARE
-    v_pending_name VARCHAR(64);
-BEGIN
-    SELECT display_name_pending INTO v_pending_name
-    FROM "user"
-    WHERE id = p_user_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'User not found';
-    END IF;
-
-    IF v_pending_name IS NULL OR TRIM(v_pending_name) = '' THEN
-        RAISE EXCEPTION 'No pending display name for this user';
-    END IF;
-
-    UPDATE "user"
-    SET display_name = display_name_pending,
-        display_name_pending = NULL,
-        display_name_status = 1
-    WHERE id = p_user_id;
-
-    RETURN QUERY
-    SELECT v_pending_name, 1::SMALLINT;
-END;
-$$ LANGUAGE plpgsql;
-
--- Function to reject a pending display name
-CREATE OR REPLACE FUNCTION reject_display_name(p_user_id UUID)
-RETURNS TABLE (
-    final_display_name VARCHAR(64),
-    status SMALLINT
-) AS $$
-DECLARE
-    v_current_name VARCHAR(64);
-    v_pending_name VARCHAR(64);
-BEGIN
-    SELECT display_name, display_name_pending INTO v_current_name, v_pending_name
-    FROM "user"
-    WHERE id = p_user_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'User not found';
-    END IF;
-
-    IF v_pending_name IS NULL OR TRIM(v_pending_name) = '' THEN
-        RAISE EXCEPTION 'No pending display name for this user';
-    END IF;
-
-    UPDATE "user"
-    SET display_name_status = 2
-    WHERE id = p_user_id;
-
-    RETURN QUERY
-    SELECT COALESCE(v_current_name, ''), 2::SMALLINT;
-END;
-$$ LANGUAGE plpgsql;
-
--- Function to submit a solution with scores
+-- Recreate stored procedure with UUID solution ID return type.
 CREATE OR REPLACE FUNCTION submit_solution_with_scores(
     p_user_id UUID,
     p_level_id VARCHAR(16),
@@ -206,9 +109,9 @@ CREATE OR REPLACE FUNCTION submit_solution_with_scores(
     p_solution VARCHAR(1024),
     p_result SMALLINT,
     p_scores JSON
-) RETURNS INTEGER AS $$
+) RETURNS UUID AS $$
 DECLARE
-    v_solution_id INTEGER;
+    v_solution_id UUID;
     v_score_record JSON;
     v_score_type VARCHAR(16);
     v_score_value INTEGER;
@@ -237,7 +140,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to get best scores
+-- Recreate function to get best scores (levels argument required in this migration).
 CREATE OR REPLACE FUNCTION get_best_scores(
     p_user_id UUID,
     p_levels JSON,
@@ -360,7 +263,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to get leaderboard count
+-- Recreate function to get leaderboard count.
 CREATE OR REPLACE FUNCTION get_leaderboard_count(
     p_user_id UUID,
     p_levels JSON,
@@ -443,7 +346,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to get paginated leaderboard
+-- Recreate function to get paginated leaderboard.
 CREATE OR REPLACE FUNCTION get_leaderboard(
     p_user_id UUID,
     p_levels JSON,
@@ -588,7 +491,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to calculate play time
+-- Recreate function to calculate play time.
 CREATE OR REPLACE FUNCTION get_user_play_time_ms(p_user_id UUID)
 RETURNS INTEGER AS $$
 DECLARE
@@ -601,22 +504,5 @@ BEGIN
       AND sc.type_id = 'time_ms';
 
     RETURN v_total_time;
-END;
-$$ LANGUAGE plpgsql;
-
--- Function to touch user active time
-CREATE OR REPLACE FUNCTION touch_user_active_time(
-    p_user_id UUID,
-    p_game_version VARCHAR(32)
-) RETURNS VOID AS $$
-BEGIN
-    UPDATE "user"
-    SET date_time_active_utc = NOW() AT TIME ZONE 'UTC',
-        game_version = p_game_version
-    WHERE id = p_user_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'User not found: %', p_user_id;
-    END IF;
 END;
 $$ LANGUAGE plpgsql;

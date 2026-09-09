@@ -12,6 +12,12 @@ A migration version table (`schema_migrations`) is created automatically by the 
 
 - `sql/migrations/000001_initial_schema.up.sql`
 - `sql/migrations/000001_initial_schema.down.sql`
+- `sql/migrations/000002_add_game_version_to_user_creation.up.sql`
+- `sql/migrations/000002_add_game_version_to_user_creation.down.sql`
+- `sql/migrations/000003_migrate_solution_id_to_uuid_v7.up.sql`
+- `sql/migrations/000003_migrate_solution_id_to_uuid_v7.down.sql`
+- `sql/migrations/000004_get_best_scores_optional_levels.up.sql`
+- `sql/migrations/000004_get_best_scores_optional_levels.down.sql`
 
 ## Runtime behavior
 

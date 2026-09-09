@@ -28,7 +28,6 @@ type BestScoreEntry struct {
 	LevelVersion int    `json:"level_version"`
 	ScoreType    string `json:"score_type"`
 	BestScore    int    `json:"best_score"`
-	UserID       string `json:"user_id"`
 	DisplayName  string `json:"display_name"`
 	FriendCode   string `json:"friend_code"`
 }
@@ -42,7 +41,7 @@ type LeaderboardEntry struct {
 // Solution represents a submitted solution response
 type Solution struct {
 	ApiResponse
-	SolutionID int `json:"solution_id"`
+	SolutionID string `json:"solution_id"`
 }
 
 // BestScoresResponse represents the JSON response for best scores
@@ -150,16 +149,19 @@ func submitScoreHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Get authenticated user ID from context (set by authMiddleware)
-		userID, ok := GetUserID(r)
-		if !ok {
-			log.Printf("User ID not found in request context")
+		userID, okUserID := GetUserID(r)
+		displayName, okName := GetDisplayName(r)
+		friendCode, okCode := GetFriendCode(r)
+		if !okUserID || !okName || !okCode {
+			log.Printf("User ID, display name, or friend code not found in request context")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		// Verify solution hash
 		if !verifySolutionHash(req.Solution, req.SolutionHash) {
-			log.Printf("Solution hash verification failed for user %s", userID)
+			log.Printf("Rejected solution by %s (%s) for level %s.%d. Invalid hash.",
+				displayName, friendCode, req.LevelID, req.LevelVersion)
 			http.Error(w, "Solution hash verification failed", http.StatusBadRequest)
 			return
 		}
@@ -187,14 +189,15 @@ func submitScoreHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Call stored procedure to submit solution with scores
-		var solutionID int
+		var solutionID string
 		err = db.QueryRow(`
 			SELECT submit_solution_with_scores($1, $2, $3, $4, $5, $6, $7)
 		`, userID, req.LevelID, req.LevelVersion, req.GameVersion, req.Solution, 1, string(scoresJSONBytes)).
 			Scan(&solutionID)
 
 		if err != nil {
-			log.Printf("Failed to submit solution with scores: %v", err)
+			log.Printf("Rejected solution by %s (%s) for level %s.%d. %v",
+				displayName, friendCode, req.LevelID, req.LevelVersion, err)
 			// Check if it's a score type validation error
 			if strings.Contains(err.Error(), "Invalid score type:") {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -204,8 +207,8 @@ func submitScoreHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		log.Printf("Score submitted successfully: solution_id=%d, user=%s, level=%s",
-			solutionID, userID, req.LevelID)
+		log.Printf("Accepted solution by %s (%s) for level %s.%d. Solution ID: %s.",
+			displayName, friendCode, req.LevelID, req.LevelVersion, solutionID)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -253,12 +256,6 @@ func bestScoresHandler(db *sql.DB) http.HandlerFunc {
 		levelsParam := r.URL.Query().Get("levels")
 		scope := r.URL.Query().Get("scope")
 
-		// Validate levels parameter
-		if levelsParam == "" {
-			http.Error(w, "Levels parameter is required", http.StatusBadRequest)
-			return
-		}
-
 		// Default scope to global if not specified
 		if scope == "" {
 			scope = "global"
@@ -276,25 +273,28 @@ func bestScoresHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Parse levels parameter and build JSON array
-		levelsJSON, err := parseLevelsParameter(levelsParam)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+		// Parse levels parameter if provided, otherwise pass NULL for all levels
+		var levelsArg interface{}
+		if levelsParam != "" {
+			levelsJSON, err := parseLevelsParameter(levelsParam)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 
-		// Convert levels to JSON
-		levelsJSONBytes, err := json.Marshal(levelsJSON)
-		if err != nil {
-			log.Printf("Failed to marshal levels to JSON: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
+			levelsJSONBytes, err := json.Marshal(levelsJSON)
+			if err != nil {
+				log.Printf("Failed to marshal levels to JSON: %v", err)
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+				return
+			}
+			levelsArg = string(levelsJSONBytes)
 		}
 
 		// Call stored procedure to get best scores
 		rows, err := db.Query(`
 			SELECT * FROM get_best_scores($1, $2, $3)
-		`, userID, string(levelsJSONBytes), scope)
+		`, userID, levelsArg, scope)
 
 		if err != nil {
 			log.Printf("Failed to get best scores: %v", err)
@@ -311,12 +311,13 @@ func bestScoresHandler(db *sql.DB) http.HandlerFunc {
 		var scores []BestScoreEntry
 		for rows.Next() {
 			var entry BestScoreEntry
+			var privateUserID string
 			err := rows.Scan(
 				&entry.LevelID,
 				&entry.LevelVersion,
 				&entry.ScoreType,
 				&entry.BestScore,
-				&entry.UserID,
+				&privateUserID,
 				&entry.DisplayName,
 				&entry.FriendCode,
 			)
@@ -475,13 +476,14 @@ func leaderboardHandler(db *sql.DB) http.HandlerFunc {
 		var scores []LeaderboardEntry
 		for rows.Next() {
 			var entry LeaderboardEntry
+			var privateUserID string
 			err := rows.Scan(
 				&entry.Rank,
 				&entry.LevelID,
 				&entry.LevelVersion,
 				&entry.ScoreType,
 				&entry.BestScore,
-				&entry.UserID,
+				&privateUserID,
 				&entry.DisplayName,
 				&entry.FriendCode,
 			)

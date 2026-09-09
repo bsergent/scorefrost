@@ -32,7 +32,6 @@ Requires a valid API key in the `X-API-Key` header.
       "level_version": 1,
       "score_type": "time_ms",
       "best_score": 12500,
-      "user_id": "123e4567-e89b-12d3-a456-426614174000",
       "display_name": "Speedy Runner",
       "friend_code": "AB12-CD34"
     }
@@ -73,9 +72,8 @@ Requires a valid API key in the `X-API-Key` header.
 | `level_version` | integer | Version of the level |
 | `score_type` | string | Type of score (e.g., "time_ms", "points") |
 | `best_score` | integer | The best score value |
-| `user_id` | string | UUID of the user who achieved the score |
 | `display_name` | string | User's display name |
-| `friend_code` | string | User's friend code |
+| `friend_code` | string | Public, human-readable identifier of the user who achieve the score |
 
 ### Example Requests
 
