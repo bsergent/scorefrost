@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -44,10 +45,18 @@ func main() {
 		log.Fatalf("Failed to sync dev user API key: %v", err)
 	}
 
-	// Create rate limiter: 100 requests per minute per IP
+	// Create rate limiter: 20 requests per minute per IP
 	// Initialize rate limiter
-	rateLimiter := NewRateLimiter(100, 1*time.Minute)
-	log.Println("Rate limiter initialized: 100 requests/minute per IP")
+	rateLimitStr := os.Getenv("API_MAX_REQUESTS_PER_MINUTE")
+	if rateLimitStr == "" {
+		rateLimitStr = "20"
+	}
+	rateLimitInt, err := strconv.Atoi(rateLimitStr)
+	if err != nil {
+		log.Fatalf("Invalid API_MAX_REQUESTS_PER_MINUTE value: %v", err)
+	}
+	rateLimiter := NewRateLimiter(rateLimitInt, 1*time.Minute)
+	log.Printf("Rate limiter initialized: %d requests/minute per IP", rateLimitInt)
 
 	// Set up routes using shared function
 	mux := setupRoutes(db)
