@@ -149,16 +149,19 @@ func submitScoreHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Get authenticated user ID from context (set by authMiddleware)
-		userID, ok := GetUserID(r)
-		if !ok {
-			log.Printf("User ID not found in request context")
+		userID, okUserID := GetUserID(r)
+		displayName, okName := GetDisplayName(r)
+		friendCode, okCode := GetFriendCode(r)
+		if !okUserID || !okName || !okCode {
+			log.Printf("User ID, display name, or friend code not found in request context")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		// Verify solution hash
 		if !verifySolutionHash(req.Solution, req.SolutionHash) {
-			log.Printf("Solution hash verification failed for user %s", userID)
+			log.Printf("Rejected solution by %s (%s) for level %s.%d. Invalid hash.",
+				displayName, friendCode, req.LevelID, req.LevelVersion)
 			http.Error(w, "Solution hash verification failed", http.StatusBadRequest)
 			return
 		}
@@ -193,7 +196,8 @@ func submitScoreHandler(db *sql.DB) http.HandlerFunc {
 			Scan(&solutionID)
 
 		if err != nil {
-			log.Printf("Failed to submit solution with scores: %v", err)
+			log.Printf("Rejected solution by %s (%s) for level %s.%d. %v",
+				displayName, friendCode, req.LevelID, req.LevelVersion, err)
 			// Check if it's a score type validation error
 			if strings.Contains(err.Error(), "Invalid score type:") {
 				http.Error(w, err.Error(), http.StatusBadRequest)
@@ -203,8 +207,8 @@ func submitScoreHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		log.Printf("Score submitted successfully: solution_id=%s, user=%s, level=%s",
-			solutionID, userID, req.LevelID)
+		log.Printf("Accepted solution by %s (%s) for level %s.%d. Solution ID: %s.",
+			displayName, friendCode, req.LevelID, req.LevelVersion, solutionID)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
